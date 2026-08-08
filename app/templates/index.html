@@ -5,68 +5,308 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Wire Branch Counter</title>
   <style>
-    :root { color-scheme: dark; font-family: Inter, system-ui, sans-serif; }
-    body { margin: 0; min-height: 100vh; background: #101416; color: #edf3ef; }
-    main { width: min(1100px, calc(100% - 32px)); margin: 0 auto; padding: 32px 0; }
-    header { display: flex; justify-content: space-between; align-items: end; gap: 16px; margin-bottom: 24px; }
-    h1 { margin: 0 0 6px; font-size: clamp(26px, 5vw, 42px); }
-    p { margin: 0; color: #aebbb4; }
-    .badge { padding: 8px 12px; border-radius: 999px; background: #1b2923; color: #66e39f; font-size: 13px; }
-    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
-    .card { overflow: hidden; border: 1px solid #29342f; border-radius: 16px; background: #171d1d; }
-    .card h2 { margin: 0; padding: 16px 18px; font-size: 16px; }
-    .stage { aspect-ratio: 16 / 10; background: #090d0d; display: grid; place-items: center; }
-    video, #result, #uploadPreview { width: 100%; height: 100%; object-fit: contain; }
-    #result, #uploadPreview { display: none; }
-    .controls { display: flex; flex-wrap: wrap; gap: 10px; padding: 16px 18px; }
-    button { border: 0; border-radius: 9px; padding: 11px 15px; color: #08130d; background: #66e39f; font-weight: 700; cursor: pointer; }
-    button.secondary { color: #dbe9e0; background: #2a3631; }
-    button:disabled { cursor: not-allowed; opacity: .5; }
-    .stats { display: flex; align-items: center; gap: 12px; padding: 18px; border-top: 1px solid #29342f; }
-    .number { color: #66e39f; font-size: 42px; font-weight: 800; line-height: 1; }
-    #message { min-height: 22px; padding: 0 18px 16px; color: #f0c77b; }
-    .detections { padding: 12px 18px; border-top: 1px solid #29342f; font-size: 13px; color: #aebbb4; }
-    .detections ul { margin: 8px 0 0 16px; padding: 0; }
-    .detections li { margin-bottom: 4px; }
-    .upload-area { padding: 20px; text-align: center; color: #aebbb4; cursor: pointer; }
-    .upload-area:hover { background: rgba(102, 227, 159, 0.05); }
+    * { box-sizing: border-box; }
+    :root {
+      color-scheme: dark;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      --bg-primary: #0f1419;
+      --bg-card: #1a1f26;
+      --bg-input: #242b33;
+      --text-primary: #e7e9ea;
+      --text-secondary: #8899a6;
+      --accent: #1d9bf0;
+      --accent-green: #00ba7c;
+      --accent-orange: #ff7a00;
+      --accent-red: #f4212e;
+      --border: #2f3943;
+    }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+    }
+    main {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    h1 {
+      margin: 0;
+      font-size: 28px;
+      font-weight: 700;
+    }
+    .subtitle {
+      margin: 4px 0 0;
+      color: var(--text-secondary);
+      font-size: 14px;
+    }
+    .badge {
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 600;
+      background: var(--bg-input);
+      color: var(--text-secondary);
+    }
+    .badge.connected { background: rgba(0, 186, 124, 0.2); color: var(--accent-green); }
+    .badge.disconnected { background: rgba(244, 33, 46, 0.2); color: var(--accent-red); }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+    @media (max-width: 900px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+
+    .card {
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      background: var(--bg-card);
+      overflow: hidden;
+    }
+    .card-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .card-header h2 {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 600;
+    }
+    .card-body {
+      aspect-ratio: 16 / 10;
+      background: var(--bg-input);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }
+    .card-body img, .card-body video {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+    .card-footer {
+      padding: 16px 20px;
+    }
+
+    .upload-area {
+      text-align: center;
+      color: var(--text-secondary);
+      padding: 20px;
+    }
+    .upload-area p { margin: 0 0 12px; }
+    .upload-icon {
+      font-size: 48px;
+      margin-bottom: 12px;
+      opacity: 0.5;
+    }
+
+    button {
+      border: 0;
+      border-radius: 8px;
+      padding: 12px 20px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    button.primary {
+      background: var(--accent-green);
+      color: #000;
+    }
+    button.primary:hover {
+      background: #00d68f;
+    }
+    button.secondary {
+      background: var(--bg-input);
+      color: var(--text-primary);
+      border: 1px solid var(--border);
+    }
+    button.secondary:hover {
+      background: var(--border);
+    }
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .btn-group {
+      display: flex;
+      gap: 10px;
+    }
+
+    .stats {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 20px;
+      background: var(--bg-input);
+      border-radius: 12px;
+      margin-bottom: 16px;
+    }
+    .number {
+      font-size: 48px;
+      font-weight: 800;
+      color: var(--accent-green);
+      line-height: 1;
+      min-width: 60px;
+    }
+    .number-label {
+      color: var(--text-secondary);
+      font-size: 14px;
+    }
+
+    .message {
+      padding: 12px 16px;
+      border-radius: 8px;
+      font-size: 14px;
+      margin-bottom: 16px;
+    }
+    .message.info { background: rgba(29, 155, 240, 0.1); color: var(--accent); }
+    .message.success { background: rgba(0, 186, 124, 0.1); color: var(--accent-green); }
+    .message.error { background: rgba(244, 33, 46, 0.1); color: var(--accent-red); }
+    .message.warning { background: rgba(255, 122, 0, 0.1); color: var(--accent-orange); }
+
+    .detections-panel {
+      background: var(--bg-input);
+      border-radius: 12px;
+      padding: 16px;
+    }
+    .detections-header {
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 12px;
+      color: var(--text-secondary);
+    }
+    .detection-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .detection-item:last-child { border-bottom: none; }
+    .detection-num {
+      width: 28px;
+      height: 28px;
+      background: var(--accent-green);
+      color: #000;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+    .detection-info { flex: 1; }
+    .detection-label {
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    .detection-meta {
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+    .confidence-bar {
+      width: 100px;
+      height: 8px;
+      background: var(--border);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .confidence-fill {
+      height: 100%;
+      background: var(--accent-green);
+      border-radius: 4px;
+      transition: width 0.3s;
+    }
+    .confidence-fill.high { background: var(--accent-green); }
+    .confidence-fill.medium { background: var(--accent-orange); }
+    .confidence-fill.low { background: var(--accent-red); }
+
+    .no-detections {
+      text-align: center;
+      padding: 20px;
+      color: var(--text-secondary);
+    }
+
     input[type="file"] { display: none; }
-    @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } header { display: block; } .badge { display: inline-block; margin-top: 14px; } }
   </style>
 </head>
 <body>
 <main>
-  <header><div><h1>Wire Branch Counter</h1><p>Deteksi dan hitung kawat tembaga bercabang.</p></div><span class="badge" id="status">Connecting...</span></header>
+  <header>
+    <div>
+      <h1>🔌 Wire Branch Counter</h1>
+      <p class="subtitle">Deteksi dan hitung kawat tembaga bercabang secara real-time</p>
+    </div>
+    <span class="badge" id="status">Connecting...</span>
+  </header>
 
   <section class="grid">
+    <!-- Input Card -->
     <article class="card">
-      <h2>Webcam</h2>
-      <div class="stage">
+      <div class="card-header">
+        <h2>📷 Input</h2>
+      </div>
+      <div class="card-body" id="inputStage">
         <video id="video" autoplay muted playsinline></video>
         <div class="upload-area" id="uploadArea">
-          <p>Atau drag & drop gambar di sini</p>
-          <button id="uploadBtn" class="secondary">Pilih File</button>
+          <div class="upload-icon">📁</div>
+          <p>Drag & drop gambar di sini</p>
+          <p style="font-size:12px;margin-top:8px;">atau</p>
+          <button class="secondary" id="uploadBtn">Pilih File</button>
         </div>
+        <img id="uploadPreview" alt="Preview" style="display:none;">
         <input type="file" id="fileInput" accept="image/*">
-        <img id="uploadPreview" alt="Preview">
       </div>
-      <div class="controls">
-        <button id="startCam">Aktifkan Kamera</button>
-        <button id="stopCam" class="secondary" disabled>Berhenti</button>
+      <div class="card-footer">
+        <div class="btn-group">
+          <button class="primary" id="startCam">🎥 Aktifkan Kamera</button>
+          <button class="secondary" id="stopCam" disabled>⏹ Berhenti</button>
+        </div>
       </div>
     </article>
 
+    <!-- Result Card -->
     <article class="card">
-      <h2>Hasil Deteksi</h2>
-      <div class="stage"><img id="result" alt="Hasil deteksi"></div>
-      <div class="stats">
-        <span class="number" id="count">0</span>
-        <span>kawat bercabang terdeteksi</span>
+      <div class="card-header">
+        <h2>✅ Hasil Deteksi</h2>
+        <span id="liveIndicator" style="font-size:12px;color:var(--text-secondary);display:none;">● LIVE</span>
       </div>
-      <div id="message">Tekan "Aktifkan Kamera" atau upload gambar.</div>
-      <div class="detections" id="detections" style="display:none">
-        <strong>Deteksi:</strong>
-        <ul id="detectionsList"></ul>
+      <div class="card-body">
+        <img id="result" alt="Hasil Deteksi" style="display:none;">
+        <div id="placeholderResult" class="no-detections">
+          <div style="font-size:48px;margin-bottom:12px;">🔍</div>
+          <p>Upload gambar atau aktifkan kamera<br>untuk memulai deteksi</p>
+        </div>
+      </div>
+      <div class="card-footer">
+        <div class="stats">
+          <span class="number" id="count">0</span>
+          <span class="number-label">kawat<br>terdeteksi</span>
+        </div>
+        <div class="message info" id="message">Tekan "Aktifkan Kamera" atau upload gambar.</div>
+        <div class="detections-panel" id="detectionsPanel" style="display:none;">
+          <div class="detections-header">📋 Detail Deteksi</div>
+          <div id="detectionsList"></div>
+        </div>
       </div>
     </article>
   </section>
@@ -83,42 +323,88 @@ const startCam = document.getElementById('startCam');
 const stopCam = document.getElementById('stopCam');
 const count = document.getElementById('count');
 const message = document.getElementById('message');
-const detectionsDiv = document.getElementById('detections');
+const detectionsPanel = document.getElementById('detectionsPanel');
 const detectionsList = document.getElementById('detectionsList');
 const statusBadge = document.getElementById('status');
+const placeholderResult = document.getElementById('placeholderResult');
+const liveIndicator = document.getElementById('liveIndicator');
 
 const API_URL = window.location.origin;
 let stream, timer, busy = false;
 
-// Check API connection
+function setMessage(text, type = 'info') {
+  message.textContent = text;
+  message.className = 'message ' + type;
+}
+
+function setStatus(connected) {
+  if (connected) {
+    statusBadge.textContent = '● Connected';
+    statusBadge.className = 'badge connected';
+  } else {
+    statusBadge.textContent = '○ Disconnected';
+    statusBadge.className = 'badge disconnected';
+  }
+}
+
 async function checkHealth() {
   try {
     const res = await fetch(`${API_URL}/health`);
     if (res.ok) {
-      statusBadge.textContent = 'Connected';
-      statusBadge.style.background = '#1b2923';
-      statusBadge.style.color = '#66e39f';
+      const data = await res.json();
+      setStatus(true);
     }
   } catch {
-    statusBadge.textContent = 'Disconnected';
-    statusBadge.style.background = '#29231b';
-    statusBadge.style.color = '#e39f66';
+    setStatus(false);
   }
 }
 checkHealth();
 setInterval(checkHealth, 10000);
 
+function getConfidenceClass(conf) {
+  if (conf >= 0.7) return 'high';
+  if (conf >= 0.4) return 'medium';
+  return 'low';
+}
+
+function renderDetections(detections) {
+  if (!detections || detections.length === 0) {
+    detectionsPanel.style.display = 'none';
+    return;
+  }
+
+  detectionsList.innerHTML = detections.map((d, i) => {
+    const conf = d.confidence * 100;
+    const confClass = getConfidenceClass(d.confidence);
+    return `
+      <div class="detection-item">
+        <div class="detection-num">${i + 1}</div>
+        <div class="detection-info">
+          <div class="detection-label">${d.label}</div>
+          <div class="detection-meta">Confidence: ${conf.toFixed(1)}%</div>
+        </div>
+        <div class="confidence-bar">
+          <div class="confidence-fill ${confClass}" style="width: ${conf}%"></div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  detectionsPanel.style.display = 'block';
+}
+
 async function sendImage(imageSource) {
   if (busy) return;
   busy = true;
-  message.textContent = 'Menganalisis...';
+  setMessage('⏳ Menganalisis gambar...', 'info');
 
   try {
     const canvas = document.createElement('canvas');
-    canvas.width = imageSource.width || video.videoWidth;
-    canvas.height = imageSource.height || video.videoHeight;
+    canvas.width = imageSource.width || video.videoWidth || 640;
+    canvas.height = imageSource.height || video.videoHeight || 480;
     const ctx = canvas.getContext('2d');
     ctx.drawImage(imageSource, 0, 0);
+    canvas.width = Math.min(canvas.width, 1280);
 
     const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.85));
     const formData = new FormData();
@@ -129,23 +415,26 @@ async function sendImage(imageSource) {
 
     if (!response.ok) throw new Error(data.detail || 'Deteksi gagal');
 
+    // Show result
     result.src = `data:image/jpeg;base64,${data.annotated_image}`;
     result.style.display = 'block';
-    count.textContent = data.count;
-    message.textContent = `Berhasil! ${data.count} objek terdeteksi.`;
+    placeholderResult.style.display = 'none';
 
-    // Show detections list
-    if (data.detections && data.detections.length > 0) {
-      detectionsList.innerHTML = data.detections.map(d =>
-        `<li>${d.label} - ${(d.confidence * 100).toFixed(1)}%</li>`
-      ).join('');
-      detectionsDiv.style.display = 'block';
+    // Update count
+    count.textContent = data.count;
+
+    // Update message
+    if (data.count > 0) {
+      setMessage(`✅ Deteksi berhasil! ${data.count} objek ditemukan.`, 'success');
     } else {
-      detectionsDiv.style.display = 'none';
+      setMessage('⚠️ Tidak ada objek terdeteksi.', 'warning');
     }
 
+    // Render detections
+    renderDetections(data.detections);
+
   } catch (error) {
-    message.textContent = 'Error: ' + error.message;
+    setMessage('❌ Error: ' + error.message, 'error');
   } finally {
     busy = false;
   }
@@ -154,18 +443,24 @@ async function sendImage(imageSource) {
 // Webcam handlers
 startCam.onclick = async () => {
   try {
-    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment' },
+      audio: false
+    });
     video.srcObject = stream;
     video.style.display = 'block';
     uploadArea.style.display = 'none';
     uploadPreview.style.display = 'none';
     startCam.disabled = true;
     stopCam.disabled = false;
+    liveIndicator.style.display = 'inline';
+    setMessage('📹 Kamera aktif. Deteksi berjalan...', 'info');
+
     timer = setInterval(() => {
-      if (video.readyState >= 2) sendImage(video);
-    }, 1000);
+      if (video.readyState >= 2 && !busy) sendImage(video);
+    }, 1500);
   } catch (error) {
-    message.textContent = 'Kamera error: ' + error.message;
+    setMessage('❌ Kamera error: ' + error.message, 'error');
   }
 };
 
@@ -177,7 +472,8 @@ stopCam.onclick = () => {
   uploadArea.style.display = 'block';
   startCam.disabled = false;
   stopCam.disabled = true;
-  message.textContent = 'Kamera berhenti.';
+  liveIndicator.style.display = 'none';
+  setMessage('⏹ Kamera berhenti.', 'info');
 };
 
 // Upload handlers
@@ -188,8 +484,13 @@ fileInput.onchange = (e) => {
   if (file) processFile(file);
 };
 
-uploadArea.ondragover = (e) => { e.preventDefault(); uploadArea.style.background = 'rgba(102, 227, 159, 0.1)'; };
-uploadArea.ondragleave = () => { uploadArea.style.background = ''; };
+uploadArea.ondragover = (e) => {
+  e.preventDefault();
+  uploadArea.style.background = 'rgba(0, 186, 124, 0.1)';
+};
+uploadArea.ondragleave = () => {
+  uploadArea.style.background = '';
+};
 uploadArea.ondrop = (e) => {
   e.preventDefault();
   uploadArea.style.background = '';
@@ -203,6 +504,9 @@ function processFile(file) {
     uploadPreview.src = e.target.result;
     uploadPreview.style.display = 'block';
     video.style.display = 'none';
+    uploadArea.style.display = 'none';
+    liveIndicator.style.display = 'none';
+    clearInterval(timer);
 
     const img = new Image();
     img.onload = () => sendImage(img);
@@ -211,7 +515,7 @@ function processFile(file) {
   reader.readAsDataURL(file);
 }
 
-// Initial state
+// Initialize
 video.style.display = 'none';
 </script>
 </body>
