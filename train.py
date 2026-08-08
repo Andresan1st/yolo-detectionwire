@@ -14,10 +14,10 @@ def main():
 
     # Konfigurasi
     DATA_YAML = "data/data.yaml"
-    MODEL_BASE = "yolo11n.pt"  # atau yolo11s.pt, yolo11m.pt untuk akurasi lebih
-    EPOCHS = int(os.getenv("EPOCHS", "100"))
+    MODEL_BASE = os.getenv("MODEL_BASE", "yolo11l.pt")
+    EPOCHS = int(os.getenv("EPOCHS", "150"))
     IMG_SIZE = int(os.getenv("IMG_SIZE", "640"))
-    BATCH_SIZE = int(os.getenv("BATCH_SIZE", "16"))
+    BATCH_SIZE = int(os.getenv("BATCH_SIZE", "4"))
     DEVICE = os.getenv("DEVICE", "")  # kosong = auto, "0" = GPU pertama, "cpu" = CPU
 
     # Cek file konfigurasi
@@ -42,17 +42,40 @@ def main():
     print(f"   Batch Size:    {BATCH_SIZE}")
     print(f"   Device:        {DEVICE or 'auto (GPU优先)'}")
 
-    # Count images
-    train_images = list(Path("data/dataset/images/augmented").glob("*.*")) if Path("data/dataset/images/augmented").exists() else []
-    val_images = list(Path("data/dataset/images/val").glob("*.*")) if Path("data/dataset/images/val").exists() else []
+    # Count images according to data/data.yaml
+    train_dir = Path("data/dataset/train/images")
+    val_dir = Path("data/dataset/validation/images")
+    image_extensions = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
+    train_images = [path for path in train_dir.iterdir() if path.suffix.lower() in image_extensions] if train_dir.exists() else []
+    val_images = [path for path in val_dir.iterdir() if path.suffix.lower() in image_extensions] if val_dir.exists() else []
+
+    train_labels = {path.stem for path in (train_dir.parent / "labels").glob("*.txt")} if train_dir.exists() else set()
+    val_labels = {path.stem for path in (val_dir.parent / "labels").glob("*.txt")} if val_dir.exists() else set()
+    train_stems = {path.stem for path in train_images}
+    val_stems = {path.stem for path in val_images}
 
     print(f"\n📊 Dataset:")
     print(f"   Train images:  {len(train_images)}")
     print(f"   Val images:    {len(val_images)}")
+    print(f"   Train labels:  {len(train_labels)}")
+    print(f"   Val labels:    {len(val_labels)}")
 
     if len(train_images) == 0:
         print("\n❌ Tidak ada gambar training!")
-        print("   Jalankan augment.py dulu untuk generate data")
+        print("   Tambahkan gambar ke data/dataset/train/images")
+        sys.exit(1)
+
+    missing_train = sorted(train_stems - train_labels)
+    missing_val = sorted(val_stems - val_labels)
+    if missing_train or missing_val or not val_images:
+        print("\n❌ Dataset belum siap:")
+        if missing_train:
+            print(f"   Label train hilang ({len(missing_train)}): {', '.join(missing_train[:10])}")
+        if missing_val:
+            print(f"   Label validation hilang ({len(missing_val)}): {', '.join(missing_val[:10])}")
+        if not val_images:
+            print("   Validation belum memiliki gambar.")
+        print("   Jalankan: python3 check_dataset.py")
         sys.exit(1)
 
     # Build command
@@ -66,7 +89,7 @@ def main():
         f"imgsz={IMG_SIZE}",
         f"batch={BATCH_SIZE}",
         "project=runs/detect",
-        "name=train",
+        "name=train_yolo11l",
         "exist_ok=True",
         "plots=True",
         "save=True",
@@ -93,7 +116,7 @@ def main():
         print("=" * 60)
 
         # Copy best model
-        best_model = Path("runs/detect/train/weights/best.pt")
+        best_model = Path("runs/detect/train_yolo11l/weights/best.pt")
         if best_model.exists():
             target = Path("models/best.pt")
             import shutil

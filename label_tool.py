@@ -116,8 +116,23 @@ def main():
     split = sys.argv[1].lower() if len(sys.argv) > 1 else "train"
     if split not in {"train", "val"}:
         raise SystemExit("Pakai: python label_tool.py [train|val]")
-    image_dir = ROOT / "data" / "dataset" / "images" / split
-    label_dir = ROOT / "data" / "dataset" / "labels" / split
+
+    dataset_dir = ROOT / "data" / "dataset"
+    current_dirs = {
+        "train": (dataset_dir / "train" / "images", dataset_dir / "train" / "labels"),
+        "val": (dataset_dir / "validation" / "images", dataset_dir / "validation" / "labels"),
+    }
+    legacy_dirs = {
+        "train": (dataset_dir / "images" / "train", dataset_dir / "labels" / "train"),
+        "val": (dataset_dir / "images" / "val", dataset_dir / "labels" / "val"),
+    }
+
+    image_dir, label_dir = current_dirs[split]
+    if not image_dir.exists() and legacy_dirs[split][0].exists():
+        image_dir, label_dir = legacy_dirs[split]
+    if not image_dir.exists():
+        raise SystemExit(f"Folder gambar tidak ditemukan: {image_dir}")
+
     Labeler(image_dir, label_dir).run()
 
 
