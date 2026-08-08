@@ -15,13 +15,15 @@ import numpy as np
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, HTTPException, UploadFile, Body
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from ultralytics import YOLO
 
 load_dotenv()
 
 ROOT = Path(__file__).resolve().parent.parent
+TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
 MODEL_PATH = Path(os.getenv("MODEL_PATH", "models/best.pt"))
 if not MODEL_PATH.is_absolute():
     MODEL_PATH = ROOT / MODEL_PATH
@@ -165,16 +167,14 @@ class HealthResponse(BaseModel):
 
 @app.get("/")
 def root():
-    return {
-        "message": "Wire Branch Detection API",
-        "version": "1.0.0",
-        "endpoints": {
-            "POST /api/detect": "Deteksi dengan file upload (multipart/form-data)",
-            "POST /api/detect/base64": "Deteksi dengan body JSON (base64)",
-            "GET /health": "Health check",
-            "GET /info": "Info model dan konfigurasi"
-        }
-    }
+    """Serve frontend HTML page"""
+    return FileResponse(TEMPLATE_DIR / "index.html")
+
+
+@app.get("/ui")
+def root_ui():
+    """Serve frontend HTML page (alias)"""
+    return FileResponse(TEMPLATE_DIR / "index.html")
 
 
 @app.get("/health", response_model=HealthResponse)

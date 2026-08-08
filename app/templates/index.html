@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Wire Branch Counter</title>
+  <style>
+    :root { color-scheme: dark; font-family: Inter, system-ui, sans-serif; }
+    body { margin: 0; min-height: 100vh; background: #101416; color: #edf3ef; }
+    main { width: min(1100px, calc(100% - 32px)); margin: 0 auto; padding: 32px 0; }
+    header { display: flex; justify-content: space-between; align-items: end; gap: 16px; margin-bottom: 24px; }
+    h1 { margin: 0 0 6px; font-size: clamp(26px, 5vw, 42px); }
+    p { margin: 0; color: #aebbb4; }
+    .badge { padding: 8px 12px; border-radius: 999px; background: #1b2923; color: #66e39f; font-size: 13px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+    .card { overflow: hidden; border: 1px solid #29342f; border-radius: 16px; background: #171d1d; }
+    .card h2 { margin: 0; padding: 16px 18px; font-size: 16px; }
+    .stage { aspect-ratio: 16 / 10; background: #090d0d; display: grid; place-items: center; }
+    video, #result, #uploadPreview { width: 100%; height: 100%; object-fit: contain; }
+    #result, #uploadPreview { display: none; }
+    .controls { display: flex; flex-wrap: wrap; gap: 10px; padding: 16px 18px; }
+    button { border: 0; border-radius: 9px; padding: 11px 15px; color: #08130d; background: #66e39f; font-weight: 700; cursor: pointer; }
+    button.secondary { color: #dbe9e0; background: #2a3631; }
+    button:disabled { cursor: not-allowed; opacity: .5; }
+    .stats { display: flex; align-items: center; gap: 12px; padding: 18px; border-top: 1px solid #29342f; }
+    .number { color: #66e39f; font-size: 42px; font-weight: 800; line-height: 1; }
+    #message { min-height: 22px; padding: 0 18px 16px; color: #f0c77b; }
+    .detections { padding: 12px 18px; border-top: 1px solid #29342f; font-size: 13px; color: #aebbb4; }
+    .detections ul { margin: 8px 0 0 16px; padding: 0; }
+    .detections li { margin-bottom: 4px; }
+    .upload-area { padding: 20px; text-align: center; color: #aebbb4; cursor: pointer; }
+    .upload-area:hover { background: rgba(102, 227, 159, 0.05); }
+    input[type="file"] { display: none; }
+    @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } header { display: block; } .badge { display: inline-block; margin-top: 14px; } }
+  </style>
+</head>
+<body>
+<main>
+  <header><div><h1>Wire Branch Counter</h1><p>Deteksi dan hitung kawat tembaga bercabang.</p></div><span class="badge" id="status">Connecting...</span></header>
+
+  <section class="grid">
+    <article class="card">
+      <h2>Webcam</h2>
+      <div class="stage">
+        <video id="video" autoplay muted playsinline></video>
+        <div class="upload-area" id="uploadArea">
+          <p>Atau drag & drop gambar di sini</p>
+          <button id="uploadBtn" class="secondary">Pilih File</button>
+        </div>
+        <input type="file" id="fileInput" accept="image/*">
+        <img id="uploadPreview" alt="Preview">
+      </div>
+      <div class="controls">
+        <button id="startCam">Aktifkan Kamera</button>
+        <button id="stopCam" class="secondary" disabled>Berhenti</button>
+      </div>
+    </article>
+
+    <article class="card">
+      <h2>Hasil Deteksi</h2>
+      <div class="stage"><img id="result" alt="Hasil deteksi"></div>
+      <div class="stats">
+        <span class="number" id="count">0</span>
+        <span>kawat bercabang terdeteksi</span>
+      </div>
+      <div id="message">Tekan "Aktifkan Kamera" atau upload gambar.</div>
+      <div class="detections" id="detections" style="display:none">
+        <strong>Deteksi:</strong>
+        <ul id="detectionsList"></ul>
+      </div>
+    </article>
+  </section>
+</main>
+
+<script>
+const video = document.getElementById('video');
+const result = document.getElementById('result');
+const uploadPreview = document.getElementById('uploadPreview');
+const uploadArea = document.getElementById('uploadArea');
+const fileInput = document.getElementById('fileInput');
+const uploadBtn = document.getElementById('uploadBtn');
+const startCam = document.getElementById('startCam');
+const stopCam = document.getElementById('stopCam');
+const count = document.getElementById('count');
+const message = document.getElementById('message');
+const detectionsDiv = document.getElementById('detections');
+const detectionsList = document.getElementById('detectionsList');
+const statusBadge = document.getElementById('status');
+
+const API_URL = window.location.origin;
+let stream, timer, busy = false;
+
+// Check API connection
+async function checkHealth() {
+  try {
+    const res = await fetch(`${API_URL}/health`);
+    if (res.ok) {
+      statusBadge.textContent = 'Connected';
+      statusBadge.style.background = '#1b2923';
+      statusBadge.style.color = '#66e39f';
+    }
+  } catch {
+    statusBadge.textContent = 'Disconnected';
+    statusBadge.style.background = '#29231b';
+    statusBadge.style.color = '#e39f66';
+  }
+}
+checkHealth();
+setInterval(checkHealth, 10000);
+
+async function sendImage(imageSource) {
+  if (busy) return;
+  busy = true;
+  message.textContent = 'Menganalisis...';
+
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = imageSource.width || video.videoWidth;
+    canvas.height = imageSource.height || video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(imageSource, 0, 0);
+
+    const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.85));
+    const formData = new FormData();
+    formData.append('file', blob, 'image.jpg');
+
+    const response = await fetch(`${API_URL}/api/detect`, { method: 'POST', body: formData });
+    const data = await response.json();
+
+    if (!response.ok) throw new Error(data.detail || 'Deteksi gagal');
+
+    result.src = `data:image/jpeg;base64,${data.annotated_image}`;
+    result.style.display = 'block';
+    count.textContent = data.count;
+    message.textContent = `Berhasil! ${data.count} objek terdeteksi.`;
+
+    // Show detections list
+    if (data.detections && data.detections.length > 0) {
+      detectionsList.innerHTML = data.detections.map(d =>
+        `<li>${d.label} - ${(d.confidence * 100).toFixed(1)}%</li>`
+      ).join('');
+      detectionsDiv.style.display = 'block';
+    } else {
+      detectionsDiv.style.display = 'none';
+    }
+
+  } catch (error) {
+    message.textContent = 'Error: ' + error.message;
+  } finally {
+    busy = false;
+  }
+}
+
+// Webcam handlers
+startCam.onclick = async () => {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
+    video.srcObject = stream;
+    video.style.display = 'block';
+    uploadArea.style.display = 'none';
+    uploadPreview.style.display = 'none';
+    startCam.disabled = true;
+    stopCam.disabled = false;
+    timer = setInterval(() => {
+      if (video.readyState >= 2) sendImage(video);
+    }, 1000);
+  } catch (error) {
+    message.textContent = 'Kamera error: ' + error.message;
+  }
+};
+
+stopCam.onclick = () => {
+  clearInterval(timer);
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  stream = null;
+  video.style.display = 'none';
+  uploadArea.style.display = 'block';
+  startCam.disabled = false;
+  stopCam.disabled = true;
+  message.textContent = 'Kamera berhenti.';
+};
+
+// Upload handlers
+uploadBtn.onclick = () => fileInput.click();
+
+fileInput.onchange = (e) => {
+  const file = e.target.files[0];
+  if (file) processFile(file);
+};
+
+uploadArea.ondragover = (e) => { e.preventDefault(); uploadArea.style.background = 'rgba(102, 227, 159, 0.1)'; };
+uploadArea.ondragleave = () => { uploadArea.style.background = ''; };
+uploadArea.ondrop = (e) => {
+  e.preventDefault();
+  uploadArea.style.background = '';
+  const file = e.dataTransfer.files[0];
+  if (file && file.type.startsWith('image/')) processFile(file);
+};
+
+function processFile(file) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    uploadPreview.src = e.target.result;
+    uploadPreview.style.display = 'block';
+    video.style.display = 'none';
+
+    const img = new Image();
+    img.onload = () => sendImage(img);
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+// Initial state
+video.style.display = 'none';
+</script>
+</body>
+</html>
