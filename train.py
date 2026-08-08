@@ -119,15 +119,17 @@ def main():
         best_model = Path("runs/detect/train_yolo11l/weights/best.pt")
         if best_model.exists():
             target = Path("models/best.pt")
+            target.parent.mkdir(parents=True, exist_ok=True)
             import shutil
-            shutil.copy(best_model, target)
+            shutil.copy2(best_model, target)
             print(f"\n📦 Model baru disalin ke: {target}")
             print(f"   Size: {best_model.stat().st_size / 1024 / 1024:.1f} MB")
         else:
-            print("\n⚠️  Model training tidak ditemukan")
+            print(f"\n❌ Training selesai tetapi model tidak ditemukan: {best_model}")
+            sys.exit(1)
 
         print("\n📈 Untuk melihat hasil training:")
-        print("   1. Buka runs/detect/train/ untuk melihat metrics")
+        print("   1. Buka runs/detect/train_yolo11l/ untuk melihat metrics")
         print("   2. Jalankan server: uvicorn app.main:app --host 0.0.0.0 --port 8000")
     else:
         print("\n❌ Training gagal!")
