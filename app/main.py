@@ -1,0 +1,379 @@
+"""
+Backend API untuk Copper Wire Branch Detection
+Dapat menerima gambar dari Laravel via base64 atau multipart
+"""
+
+import base64
+import json
+import os
+from pathlib import Path
+from threading import Lock
+from typing import Optional
+
+import cv2
+import numpy as np
+from dotenv import load_dotenv
+from fastapi import FastAPI, File, HTTPException, UploadFile, Body
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
+from ultralytics import YOLO
+
+load_dotenv()
+
+ROOT = Path(__file__).resolve().parent.parent
+MODEL_PATH = Path(os.getenv("MODEL_PATH", "models/best.pt"))
+if not MODEL_PATH.is_absolute():
+    MODEL_PATH = ROOT / MODEL_PATH
+CONFIDENCE = float(os.getenv("CONFIDENCE", "0.35"))
+IOU = float(os.getenv("IOU", "0.45"))
+DEVICE = os.getenv("DEVICE", "cpu")
+MAX_FRAME_WIDTH = int(os.getenv("MAX_FRAME_WIDTH", "1280"))
+
+app = FastAPI(
+    title="Wire Branch Detection API",
+    version="1.0.0",
+    description="API untuk deteksi kawat tembaga bercabang"
+)
+origins = [item.strip() for item in os.getenv("ALLOWED_ORIGINS", "*").split(",")]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["*"],
+)
+
+_model = None
+_model_lock = Lock()
+
+
+def get_model() -> YOLO:
+    global _model
+    if _model is not None:
+        return _model
+    if not MODEL_PATH.exists():
+        raise HTTPException(
+            status_code=503,
+            detail=f"Model belum ditemukan: {MODEL_PATH}. Letakkan model YOLO custom di lokasi tersebut.",
+        )
+    with _model_lock:
+        if _model is None:
+            _model = YOLO(str(MODEL_PATH))
+    return _model
+
+
+def decode_image(image_data: bytes) -> Optional[np.ndarray]:
+    """Decode image dari bytes ke numpy array"""
+    frame = cv2.imdecode(np.frombuffer(image_data, dtype=np.uint8), cv2.IMREAD_COLOR)
+    return frame
+
+
+def detect_in_image(frame: np.ndarray) -> tuple[list[dict], str]:
+    """
+    Deteksi objek dalam gambar.
+    Returns: (detections, annotated_image_base64)
+    """
+    height, width = frame.shape[:2]
+
+    # Resize jika terlalu besar
+    if width > MAX_FRAME_WIDTH:
+        scale = MAX_FRAME_WIDTH / width
+        frame = cv2.resize(frame, (MAX_FRAME_WIDTH, int(height * scale)))
+
+    # Deteksi dengan YOLO
+    model = get_model()
+    result = model.predict(frame, conf=CONFIDENCE, iou=IOU, device=DEVICE, verbose=False)[0]
+
+    # Parse hasil deteksi
+    detections = []
+    names = result.names or {}
+    boxes = result.boxes
+
+    if boxes is not None:
+        for box in boxes:
+            coordinates = box.xyxy[0].cpu().numpy().astype(int).tolist()
+            class_id = int(box.cls[0].item())
+            confidence = float(box.conf[0].item())
+            label = str(names.get(class_id, class_id))
+
+            x1, y1, x2, y2 = coordinates
+
+            detections.append({
+                "class_id": class_id,
+                "label": label,
+                "confidence": round(confidence, 3),
+                "bbox": {
+                    "x1": x1,
+                    "y1": y1,
+                    "x2": x2,
+                    "y2": y2,
+                    "width": x2 - x1,
+                    "height": y2 - y1
+                }
+            })
+
+            # Gambar bounding box
+            cv2.rectangle(frame, (x1, y1), (x2, y2), (40, 220, 120), 2)
+            cv2.putText(
+                frame,
+                f"{label} {confidence:.0%}",
+                (x1, max(24, y1 - 8)),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.65,
+                (40, 220, 120),
+                2,
+                cv2.LINE_AA,
+            )
+
+    # Encode annotated image ke base64
+    success, encoded = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 82])
+    if not success:
+        return detections, ""
+
+    annotated_base64 = base64.b64encode(encoded.tobytes()).decode("ascii")
+    return detections, annotated_base64
+
+
+# ==================== REQUEST/RESPONSE MODELS ====================
+
+class DetectionRequest(BaseModel):
+    """Request body untuk deteksi via JSON/base64"""
+    image: str  # Base64 encoded image (tanpa prefix data:image/jpeg;base64,)
+    include_annotated: bool = True  # Apakah perlu mengembalikan gambar berannotated
+
+
+class DetectionResponse(BaseModel):
+    """Response untuk deteksi"""
+    success: bool
+    count: int
+    detections: list[dict]
+    annotated_image: Optional[str] = None  # Base64
+
+
+class HealthResponse(BaseModel):
+    """Response untuk health check"""
+    status: str
+    model: str
+    model_loaded: bool
+    device: str
+    confidence: float
+    iou: float
+
+
+# ==================== API ENDPOINTS ====================
+
+@app.get("/")
+def root():
+    return {
+        "message": "Wire Branch Detection API",
+        "version": "1.0.0",
+        "endpoints": {
+            "POST /api/detect": "Deteksi dengan file upload (multipart/form-data)",
+            "POST /api/detect/base64": "Deteksi dengan body JSON (base64)",
+            "GET /health": "Health check",
+            "GET /info": "Info model dan konfigurasi"
+        }
+    }
+
+
+@app.get("/health", response_model=HealthResponse)
+def health():
+    """Health check endpoint"""
+    return HealthResponse(
+        status="ok",
+        model=str(MODEL_PATH),
+        model_loaded=_model is not None,
+        device=DEVICE,
+        confidence=CONFIDENCE,
+        iou=IOU
+    )
+
+
+@app.get("/info")
+def info():
+    """Info tentang model dan konfigurasi"""
+    return {
+        "model_path": str(MODEL_PATH),
+        "model_exists": MODEL_PATH.exists(),
+        "model_loaded": _model is not None,
+        "confidence_threshold": CONFIDENCE,
+        "iou_threshold": IOU,
+        "device": DEVICE,
+        "max_frame_width": MAX_FRAME_WIDTH
+    }
+
+
+# ==================== DETECTION ENDPOINTS ====================
+
+@app.post("/api/detect", response_model=DetectionResponse)
+async def detect_upload(file: UploadFile = File(...)):
+    """
+    Deteksi dengan upload file (multipart/form-data).
+    Compatible dengan Laravel/frontend lama.
+    """
+    if not file.content_type or not file.content_type.startswith("image/"):
+        raise HTTPException(
+            status_code=415,
+            detail="File harus berupa gambar."
+        )
+
+    raw = await file.read()
+    frame = decode_image(raw)
+    if frame is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Frame tidak dapat dibaca."
+        )
+
+    detections, annotated_base64 = detect_in_image(frame)
+
+    return DetectionResponse(
+        success=True,
+        count=len(detections),
+        detections=detections,
+        annotated_image=annotated_base64 if annotated_base64 else None
+    )
+
+
+@app.post("/api/detect/base64", response_model=DetectionResponse)
+async def detect_base64(request: DetectionRequest):
+    """
+    Deteksi dengan gambar base64 (JSON body).
+    Cocok untuk integrasi dengan Laravel.
+
+    Body JSON:
+    {
+        "image": "base64_encoded_image_without_prefix",
+        "include_annotated": true
+    }
+    """
+    try:
+        # Hapus prefix jika ada
+        image_data = request.image
+        if "," in image_data:
+            image_data = image_data.split(",")[-1]
+
+        # Decode base64 ke bytes
+        raw = base64.b64decode(image_data)
+        frame = decode_image(raw)
+
+        if frame is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Gambar tidak dapat dibaca."
+            )
+
+        detections, annotated_base64 = detect_in_image(frame)
+
+        return DetectionResponse(
+            success=True,
+            count=len(detections),
+            detections=detections,
+            annotated_image=annotated_base64 if request.include_annotated else None
+        )
+
+    except base64.binascii.Error:
+        raise HTTPException(
+            status_code=400,
+            detail="Format base64 tidak valid."
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error processing image: {str(e)}"
+        )
+
+
+@app.post("/api/detect/raw")
+async def detect_raw(image_data: bytes = Body(...)):
+    """
+    Deteksi dengan raw bytes image (tanpa wrapper JSON).
+    Paling cepat untuk streaming data.
+
+    Headers: Content-Type: image/jpeg (atau image/png)
+    """
+    frame = decode_image(image_data)
+    if frame is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Gambar tidak dapat dibaca."
+        )
+
+    detections, annotated_base64 = detect_in_image(frame)
+
+    return JSONResponse({
+        "success": True,
+        "count": len(detections),
+        "detections": detections,
+        "annotated_image": annotated_base64 if annotated_base64 else None
+    })
+
+
+# ==================== BATCH DETECTION ====================
+
+class BatchDetectionRequest(BaseModel):
+    """Request untuk deteksi banyak gambar sekaligus"""
+    images: list[str]  # Array of base64 images
+    include_annotated: bool = True
+
+
+@app.post("/api/detect/batch", response_model=dict)
+async def detect_batch(request: BatchDetectionRequest):
+    """
+    Deteksi banyak gambar sekaligus.
+    Cocok untuk proses batch dari Laravel.
+
+    Body JSON:
+    {
+        "images": ["base64_image_1", "base64_image_2", ...],
+        "include_annotated": true
+    }
+    """
+    results = []
+
+    for i, img_base64 in enumerate(request.images):
+        try:
+            # Hapus prefix jika ada
+            image_data = img_base64
+            if "," in image_data:
+                image_data = image_data.split(",")[-1]
+
+            raw = base64.b64decode(image_data)
+            frame = decode_image(raw)
+
+            if frame is None:
+                results.append({
+                    "index": i,
+                    "success": False,
+                    "error": "Cannot decode image"
+                })
+                continue
+
+            detections, annotated_base64 = detect_in_image(frame)
+
+            results.append({
+                "index": i,
+                "success": True,
+                "count": len(detections),
+                "detections": detections,
+                "annotated_image": annotated_base64 if request.include_annotated else None
+            })
+
+        except Exception as e:
+            results.append({
+                "index": i,
+                "success": False,
+                "error": str(e)
+            })
+
+    return {
+        "total": len(request.images),
+        "processed": len([r for r in results if r.get("success")]),
+        "results": results
+    }
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)

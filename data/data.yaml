@@ -1,0 +1,5 @@
+path: ./data/dataset
+train: images/augmented
+val: images/val
+names:
+  0: split_wire
