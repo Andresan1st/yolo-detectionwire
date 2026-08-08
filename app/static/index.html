@@ -50,7 +50,9 @@ async function sendFrame() {
     const form = new FormData(); form.append('file', blob, 'webcam.jpg');
     const response = await fetch('/api/detect', { method: 'POST', body: form });
     const data = await response.json(); if (!response.ok) throw new Error(data.detail || 'Deteksi gagal');
-    result.src = data.image; result.style.display = 'block'; count.textContent = data.count;
+    if (!data.annotated_image) throw new Error('Server tidak mengembalikan gambar hasil deteksi.');
+    result.src = `data:image/jpeg;base64,${data.annotated_image}`;
+    result.style.display = 'block'; count.textContent = data.count;
     message.textContent = `Terakhir dianalisis: ${data.detections.length} objek.`;
   } catch (error) { message.textContent = error.message; }
   finally { busy = false; }

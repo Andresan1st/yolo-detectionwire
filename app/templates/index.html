@@ -399,14 +399,17 @@ async function sendImage(imageSource) {
   setMessage('⏳ Menganalisis gambar...', 'info');
 
   try {
+    const sourceWidth = imageSource.videoWidth || imageSource.naturalWidth || imageSource.width || 640;
+    const sourceHeight = imageSource.videoHeight || imageSource.naturalHeight || imageSource.height || 480;
+    const scale = Math.min(1, 1280 / sourceWidth);
     const canvas = document.createElement('canvas');
-    canvas.width = imageSource.width || video.videoWidth || 640;
-    canvas.height = imageSource.height || video.videoHeight || 480;
+    canvas.width = Math.round(sourceWidth * scale);
+    canvas.height = Math.round(sourceHeight * scale);
     const ctx = canvas.getContext('2d');
-    ctx.drawImage(imageSource, 0, 0);
-    canvas.width = Math.min(canvas.width, 1280);
+    ctx.drawImage(imageSource, 0, 0, canvas.width, canvas.height);
 
     const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.85));
+    if (!blob) throw new Error('Gambar tidak dapat diproses oleh browser.');
     const formData = new FormData();
     formData.append('file', blob, 'image.jpg');
 
@@ -416,9 +419,15 @@ async function sendImage(imageSource) {
     if (!response.ok) throw new Error(data.detail || 'Deteksi gagal');
 
     // Show result
-    result.src = `data:image/jpeg;base64,${data.annotated_image}`;
-    result.style.display = 'block';
-    placeholderResult.style.display = 'none';
+    if (data.annotated_image) {
+      result.src = `data:image/jpeg;base64,${data.annotated_image}`;
+      result.style.display = 'block';
+      placeholderResult.style.display = 'none';
+    } else {
+      result.removeAttribute('src');
+      result.style.display = 'none';
+      placeholderResult.style.display = 'block';
+    }
 
     // Update count
     count.textContent = data.count;
