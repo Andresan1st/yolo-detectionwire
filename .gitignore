@@ -46,9 +46,6 @@ runs/
 train*/weights/*.pt
 
 # Dataset (too large - use git-lfs or separate storage)
-data/dataset/
-data/images/
-data/labels/
 
 # Cache
 *.cache
