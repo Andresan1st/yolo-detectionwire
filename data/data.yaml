@@ -1,7 +1,7 @@
 path: ./data/dataset
 
-train: train/images
-val: validation/images
+train: /dataset/train/images
+val: /dataset/validation/images
 
 names:
   0: Element Copper
