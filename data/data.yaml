@@ -4,4 +4,4 @@ train: train/images
 val: validation/images
 
 names:
-  0: split_wire
+  0: Element Copper
