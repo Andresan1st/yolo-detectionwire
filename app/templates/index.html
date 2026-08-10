@@ -566,6 +566,7 @@ startCam.onclick = async () => {
       audio: false
     });
     video.srcObject = stream;
+    video.style.display = 'block';
     cameraContainer.style.display = 'block';
     overlay.style.display = 'block';
     uploadArea.style.display = 'none';
@@ -576,6 +577,11 @@ startCam.onclick = async () => {
     stopCam.disabled = false;
     liveIndicator.style.display = 'inline';
     setMessage('📹 Kamera aktif. Deteksi berjalan...', 'info');
+
+    video.onloadedmetadata = () => {
+      setOverlaySize();
+      video.play();
+    };
 
     createWebSocket();
     timer = setInterval(sendFrame, 1000);
@@ -590,6 +596,7 @@ stopCam.onclick = () => {
   stream = null;
   cameraContainer.style.display = 'none';
   overlay.style.display = 'none';
+  video.style.display = 'none';
   uploadArea.style.display = 'block';
   startCam.disabled = false;
   stopCam.disabled = true;
