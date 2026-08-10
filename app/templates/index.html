@@ -95,10 +95,16 @@
       justify-content: center;
       position: relative;
     }
-    .card-body img, .card-body video {
+    .card-body img, .card-body video, .card-body canvas {
       width: 100%;
       height: 100%;
       object-fit: contain;
+    }
+    .card-body canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      pointer-events: none;
     }
     .card-footer {
       padding: 16px 20px;
@@ -266,7 +272,10 @@
         <h2>📷 Input</h2>
       </div>
       <div class="card-body" id="inputStage">
-        <video id="video" autoplay muted playsinline></video>
+        <div id="cameraContainer" style="display:none; position:relative; width:100%; height:100%;">
+          <video id="video" autoplay muted playsinline></video>
+          <canvas id="overlay"></canvas>
+        </div>
         <div class="upload-area" id="uploadArea">
           <div class="upload-icon">📁</div>
           <p>Drag & drop gambar di sini</p>
@@ -314,6 +323,8 @@
 
 <script>
 const video = document.getElementById('video');
+const overlay = document.getElementById('overlay');
+const cameraContainer = document.getElementById('cameraContainer');
 const result = document.getElementById('result');
 const uploadPreview = document.getElementById('uploadPreview');
 const uploadArea = document.getElementById('uploadArea');
@@ -330,7 +341,8 @@ const placeholderResult = document.getElementById('placeholderResult');
 const liveIndicator = document.getElementById('liveIndicator');
 
 const API_URL = window.location.origin;
-let stream, timer, busy = false;
+const WS_URL = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws/detect`;
+let stream, timer, busy = false, ws;
 
 function setMessage(text, type = 'info') {
   message.textContent = text;
@@ -351,12 +363,11 @@ async function checkHealth() {
   try {
     const res = await fetch(`${API_URL}/health`);
     if (res.ok) {
-      const data = await res.json();
       setStatus(true);
+      return;
     }
-  } catch {
-    setStatus(false);
-  }
+  } catch {}
+  setStatus(false);
 }
 checkHealth();
 setInterval(checkHealth, 10000);
@@ -393,6 +404,111 @@ function renderDetections(detections) {
   detectionsPanel.style.display = 'block';
 }
 
+function setOverlaySize() {
+  overlay.width = video.videoWidth;
+  overlay.height = video.videoHeight;
+  overlay.style.width = video.clientWidth + 'px';
+  overlay.style.height = video.clientHeight + 'px';
+}
+
+function drawOverlay(detections) {
+  if (!video.videoWidth || !video.videoHeight) return;
+  setOverlaySize();
+  const ctx = overlay.getContext('2d');
+  ctx.clearRect(0, 0, overlay.width, overlay.height);
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = '#00e676';
+  ctx.font = '18px Segoe UI';
+  ctx.fillStyle = 'rgba(0, 230, 118, 0.85)';
+
+  detections.forEach((d) => {
+    const [x1, y1, x2, y2] = [d.bbox.x1, d.bbox.y1, d.bbox.x2, d.bbox.y2];
+    ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+    const label = `${d.label} ${Math.round(d.confidence * 100)}%`;
+    const textWidth = ctx.measureText(label).width + 12;
+    ctx.fillRect(x1, Math.max(0, y1 - 28), textWidth, 26);
+    ctx.fillStyle = '#000';
+    ctx.fillText(label, x1 + 6, Math.max(18, y1 - 8));
+    ctx.fillStyle = 'rgba(0, 230, 118, 0.85)';
+  });
+}
+
+function clearOverlay() {
+  const ctx = overlay.getContext('2d');
+  ctx.clearRect(0, 0, overlay.width, overlay.height);
+}
+
+function handleDetectionResult(data) {
+  busy = false;
+  if (!data.success) {
+    setMessage('❌ ' + (data.error || 'Deteksi gagal'), 'error');
+    return;
+  }
+
+  count.textContent = data.count;
+  if (data.count > 0) {
+    setMessage(`✅ Deteksi langsung: ${data.count} objek ditemukan.`, 'success');
+  } else {
+    setMessage('⚠️ Tidak ada objek terdeteksi.', 'warning');
+  }
+
+  renderDetections(data.detections);
+  drawOverlay(data.detections || []);
+  placeholderResult.style.display = 'none';
+  result.style.display = 'none';
+}
+
+function createWebSocket() {
+  if (ws && ws.readyState === WebSocket.OPEN) return;
+  ws = new WebSocket(WS_URL);
+  ws.binaryType = 'arraybuffer';
+
+  ws.onopen = () => {
+    setStatus(true);
+    setMessage('🔌 Koneksi WebSocket siap. Deteksi webcam dimulai.', 'info');
+  };
+
+  ws.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data);
+      handleDetectionResult(data);
+    } catch (error) {
+      setMessage('❌ WebSocket response error: ' + error.message, 'error');
+    }
+  };
+
+  ws.onclose = () => {
+    setStatus(false);
+  };
+
+  ws.onerror = () => {
+    setStatus(false);
+  };
+}
+
+function sendFrame() {
+  if (!ws || ws.readyState !== WebSocket.OPEN || busy) return;
+  if (video.readyState < 2) return;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+  canvas.toBlob((blob) => {
+    if (!blob) return;
+    try {
+      busy = true;
+      ws.send(blob);
+    } catch (error) {
+      busy = false;
+      setMessage('❌ Gagal mengirim frame: ' + error.message, 'error');
+    }
+  }, 'image/jpeg', 0.7);
+}
+
+// Upload handlers and fallback detection
 async function sendImage(imageSource) {
   if (busy) return;
   busy = true;
@@ -418,7 +534,6 @@ async function sendImage(imageSource) {
 
     if (!response.ok) throw new Error(data.detail || 'Deteksi gagal');
 
-    // Show result
     if (data.annotated_image) {
       result.src = `data:image/jpeg;base64,${data.annotated_image}`;
       result.style.display = 'block';
@@ -429,19 +544,14 @@ async function sendImage(imageSource) {
       placeholderResult.style.display = 'block';
     }
 
-    // Update count
     count.textContent = data.count;
-
-    // Update message
     if (data.count > 0) {
       setMessage(`✅ Deteksi berhasil! ${data.count} objek ditemukan.`, 'success');
     } else {
       setMessage('⚠️ Tidak ada objek terdeteksi.', 'warning');
     }
-
-    // Render detections
     renderDetections(data.detections);
-
+    clearOverlay();
   } catch (error) {
     setMessage('❌ Error: ' + error.message, 'error');
   } finally {
@@ -449,7 +559,6 @@ async function sendImage(imageSource) {
   }
 }
 
-// Webcam handlers
 startCam.onclick = async () => {
   try {
     stream = await navigator.mediaDevices.getUserMedia({
@@ -457,17 +566,19 @@ startCam.onclick = async () => {
       audio: false
     });
     video.srcObject = stream;
-    video.style.display = 'block';
+    cameraContainer.style.display = 'block';
+    overlay.style.display = 'block';
     uploadArea.style.display = 'none';
     uploadPreview.style.display = 'none';
+    result.style.display = 'none';
+    placeholderResult.style.display = 'none';
     startCam.disabled = true;
     stopCam.disabled = false;
     liveIndicator.style.display = 'inline';
     setMessage('📹 Kamera aktif. Deteksi berjalan...', 'info');
 
-    timer = setInterval(() => {
-      if (video.readyState >= 2 && !busy) sendImage(video);
-    }, 1500);
+    createWebSocket();
+    timer = setInterval(sendFrame, 1000);
   } catch (error) {
     setMessage('❌ Kamera error: ' + error.message, 'error');
   }
@@ -477,15 +588,16 @@ stopCam.onclick = () => {
   clearInterval(timer);
   if (stream) stream.getTracks().forEach(t => t.stop());
   stream = null;
-  video.style.display = 'none';
+  cameraContainer.style.display = 'none';
+  overlay.style.display = 'none';
   uploadArea.style.display = 'block';
   startCam.disabled = false;
   stopCam.disabled = true;
   liveIndicator.style.display = 'none';
   setMessage('⏹ Kamera berhenti.', 'info');
+  clearOverlay();
 };
 
-// Upload handlers
 uploadBtn.onclick = () => fileInput.click();
 
 fileInput.onchange = (e) => {
@@ -512,6 +624,8 @@ function processFile(file) {
   reader.onload = (e) => {
     uploadPreview.src = e.target.result;
     uploadPreview.style.display = 'block';
+    cameraContainer.style.display = 'none';
+    overlay.style.display = 'none';
     video.style.display = 'none';
     uploadArea.style.display = 'none';
     liveIndicator.style.display = 'none';
@@ -524,8 +638,8 @@ function processFile(file) {
   reader.readAsDataURL(file);
 }
 
-// Initialize
 video.style.display = 'none';
+overlay.style.display = 'none';
 </script>
 </body>
 </html>

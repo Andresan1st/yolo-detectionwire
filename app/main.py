@@ -13,7 +13,7 @@ from typing import Optional
 import cv2
 import numpy as np
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, HTTPException, UploadFile, Body
+from fastapi import FastAPI, File, HTTPException, UploadFile, Body, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -308,6 +308,40 @@ async def detect_raw(image_data: bytes = Body(...)):
         "detections": detections,
         "annotated_image": annotated_base64 if annotated_base64 else None
     })
+
+
+@app.websocket("/ws/detect")
+async def websocket_detect(websocket: WebSocket):
+    """Real-time webcam detection over WebSocket."""
+    await websocket.accept()
+    try:
+        while True:
+            raw = await websocket.receive_bytes()
+            frame = decode_image(raw)
+            if frame is None:
+                await websocket.send_json({
+                    "success": False,
+                    "error": "Frame tidak dapat dibaca."
+                })
+                continue
+
+            detections, annotated_base64 = detect_in_image(frame)
+            await websocket.send_json({
+                "success": True,
+                "count": len(detections),
+                "detections": detections,
+                "annotated_image": annotated_base64 if annotated_base64 else None
+            })
+    except WebSocketDisconnect:
+        return
+    except Exception as e:
+        try:
+            await websocket.send_json({
+                "success": False,
+                "error": str(e)
+            })
+        except RuntimeError:
+            pass
 
 
 # ==================== BATCH DETECTION ====================
