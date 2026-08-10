@@ -310,9 +310,10 @@
 </main>
 
 <script>
-const video = document.getElementById('video');
-const overlay = document.getElementById('overlay');
-const cameraContainer = document.getElementById('cameraContainer');
+window.addEventListener('DOMContentLoaded', () => {
+  const video = document.getElementById('video');
+  const overlay = document.getElementById('overlay');
+  const cameraContainer = document.getElementById('cameraContainer');
 const result = document.getElementById('result');
 const uploadPreview = document.getElementById('uploadPreview');
 const uploadArea = document.getElementById('uploadArea');
@@ -393,6 +394,7 @@ function renderDetections(detections) {
 }
 
 function setOverlaySize() {
+  if (!overlay || !video) return;
   overlay.width = video.videoWidth;
   overlay.height = video.videoHeight;
   overlay.style.width = video.clientWidth + 'px';
@@ -400,9 +402,10 @@ function setOverlaySize() {
 }
 
 function drawOverlay(detections) {
-  if (!video.videoWidth || !video.videoHeight) return;
+  if (!video || !overlay || !video.videoWidth || !video.videoHeight) return;
   setOverlaySize();
   const ctx = overlay.getContext('2d');
+  if (!ctx) return;
   ctx.clearRect(0, 0, overlay.width, overlay.height);
   ctx.lineWidth = 3;
   ctx.strokeStyle = '#00e676';
@@ -422,7 +425,9 @@ function drawOverlay(detections) {
 }
 
 function clearOverlay() {
+  if (!overlay) return;
   const ctx = overlay.getContext('2d');
+  if (!ctx) return;
   ctx.clearRect(0, 0, overlay.width, overlay.height);
 }
 
@@ -554,16 +559,16 @@ startCam.onclick = async () => {
       audio: false
     });
     video.srcObject = stream;
-    video.style.display = 'block';
-    cameraContainer.style.display = 'block';
-    overlay.style.display = 'block';
-    uploadArea.style.display = 'none';
-    uploadPreview.style.display = 'none';
-    result.style.display = 'none';
-    placeholderResult.style.display = 'none';
-    startCam.disabled = true;
-    stopCam.disabled = false;
-    liveIndicator.style.display = 'inline';
+    if (video) video.style.display = 'block';
+    if (cameraContainer) cameraContainer.style.display = 'block';
+    if (overlay) overlay.style.display = 'block';
+    if (uploadArea) uploadArea.style.display = 'none';
+    if (uploadPreview) uploadPreview.style.display = 'none';
+    if (result) result.style.display = 'none';
+    if (placeholderResult) placeholderResult.style.display = 'none';
+    if (startCam) startCam.disabled = true;
+    if (stopCam) stopCam.disabled = false;
+    if (liveIndicator) liveIndicator.style.display = 'inline';
     setMessage('📹 Kamera aktif. Deteksi berjalan...', 'info');
 
     video.onloadedmetadata = () => {
@@ -582,13 +587,13 @@ stopCam.onclick = () => {
   clearInterval(timer);
   if (stream) stream.getTracks().forEach(t => t.stop());
   stream = null;
-  cameraContainer.style.display = 'none';
-  overlay.style.display = 'none';
-  video.style.display = 'none';
-  uploadArea.style.display = 'block';
-  startCam.disabled = false;
-  stopCam.disabled = true;
-  liveIndicator.style.display = 'none';
+  if (cameraContainer) cameraContainer.style.display = 'none';
+  if (overlay) overlay.style.display = 'none';
+  if (video) video.style.display = 'none';
+  if (uploadArea) uploadArea.style.display = 'block';
+  if (startCam) startCam.disabled = false;
+  if (stopCam) stopCam.disabled = true;
+  if (liveIndicator) liveIndicator.style.display = 'none';
   setMessage('⏹ Kamera berhenti.', 'info');
   clearOverlay();
 };
@@ -618,12 +623,12 @@ function processFile(file) {
   const reader = new FileReader();
   reader.onload = (e) => {
     uploadPreview.src = e.target.result;
-    uploadPreview.style.display = 'block';
-    cameraContainer.style.display = 'none';
-    overlay.style.display = 'none';
-    video.style.display = 'none';
-    uploadArea.style.display = 'none';
-    liveIndicator.style.display = 'none';
+    if (uploadPreview) uploadPreview.style.display = 'block';
+    if (cameraContainer) cameraContainer.style.display = 'none';
+    if (overlay) overlay.style.display = 'none';
+    if (video) video.style.display = 'none';
+    if (uploadArea) uploadArea.style.display = 'none';
+    if (liveIndicator) liveIndicator.style.display = 'none';
     clearInterval(timer);
 
     const img = new Image();
@@ -633,8 +638,9 @@ function processFile(file) {
   reader.readAsDataURL(file);
 }
 
-video.style.display = 'none';
-overlay.style.display = 'none';
+if (video) video.style.display = 'none';
+if (overlay) overlay.style.display = 'none';
+});
 </script>
 </body>
 </html>
