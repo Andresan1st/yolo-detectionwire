@@ -265,11 +265,21 @@
     <span class="badge" id="status">Connecting...</span>
   </header>
 
+  <section>
+    <div class="stats" style="justify-content: space-between; gap: 16px; margin-bottom: 20px;">
+      <div>
+        <div class="number" id="count">0</div>
+        <div class="number-label">kawat terdeteksi</div>
+      </div>
+      <div class="message info" id="message">Tekan "Aktifkan Kamera" atau upload gambar.</div>
+      <span id="liveIndicator" class="badge disconnected" style="font-size:12px; align-self:flex-end;">○ Disconnected</span>
+    </div>
+  </section>
+
   <section class="grid">
-    <!-- Input Card -->
     <article class="card">
       <div class="card-header">
-        <h2>📷 Input</h2>
+        <h2>📷 Webcam Live</h2>
       </div>
       <div class="card-body" id="inputStage">
         <div id="cameraContainer" style="display:none; position:relative; width:100%; height:100%;">
@@ -290,29 +300,7 @@
           <button class="primary" id="startCam">🎥 Aktifkan Kamera</button>
           <button class="secondary" id="stopCam" disabled>⏹ Berhenti</button>
         </div>
-      </div>
-    </article>
-
-    <!-- Result Card -->
-    <article class="card">
-      <div class="card-header">
-        <h2>✅ Hasil Deteksi</h2>
-        <span id="liveIndicator" style="font-size:12px;color:var(--text-secondary);display:none;">● LIVE</span>
-      </div>
-      <div class="card-body">
-        <img id="result" alt="Hasil Deteksi" style="display:none;">
-        <div id="placeholderResult" class="no-detections">
-          <div style="font-size:48px;margin-bottom:12px;">🔍</div>
-          <p>Upload gambar atau aktifkan kamera<br>untuk memulai deteksi</p>
-        </div>
-      </div>
-      <div class="card-footer">
-        <div class="stats">
-          <span class="number" id="count">0</span>
-          <span class="number-label">kawat<br>terdeteksi</span>
-        </div>
-        <div class="message info" id="message">Tekan "Aktifkan Kamera" atau upload gambar.</div>
-        <div class="detections-panel" id="detectionsPanel" style="display:none;">
+        <div class="detections-panel" id="detectionsPanel" style="display:none; margin-top:16px;">
           <div class="detections-header">📋 Detail Deteksi</div>
           <div id="detectionsList"></div>
         </div>
