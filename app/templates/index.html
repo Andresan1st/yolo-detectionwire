@@ -272,7 +272,7 @@
         <div class="number-label">kawat terdeteksi</div>
       </div>
       <div class="message info" id="message">Tekan "Aktifkan Kamera" atau upload gambar.</div>
-      <span id="liveIndicator" class="badge disconnected" style="font-size:12px; align-self:flex-end;">○ Disconnected</span>
+      <span id="liveIndicator" class="badge" style="display:none; font-size:12px; align-self:flex-end;">● LIVE</span>
     </div>
   </section>
 
@@ -285,6 +285,10 @@
         <div id="cameraContainer" style="display:none; position:relative; width:100%; height:100%;">
           <video id="video" autoplay muted playsinline></video>
           <canvas id="overlay"></canvas>
+          <div id="placeholderResult" class="no-detections" style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; color:var(--text-secondary);">
+            <div style="font-size:48px; margin-bottom:12px;">🔍</div>
+            <p>Upload gambar atau aktifkan kamera<br>untuk memulai deteksi</p>
+          </div>
         </div>
         <div class="upload-area" id="uploadArea">
           <div class="upload-icon">📁</div>
@@ -447,8 +451,8 @@ function handleDetectionResult(data) {
 
   renderDetections(data.detections);
   drawOverlay(data.detections || []);
-  placeholderResult.style.display = 'none';
-  result.style.display = 'none';
+  if (placeholderResult) placeholderResult.style.display = 'none';
+  if (result) result.style.display = 'none';
 }
 
 function createWebSocket() {
@@ -527,14 +531,16 @@ async function sendImage(imageSource) {
 
     if (!response.ok) throw new Error(data.detail || 'Deteksi gagal');
 
-    if (data.annotated_image) {
+    if (data.annotated_image && result) {
       result.src = `data:image/jpeg;base64,${data.annotated_image}`;
       result.style.display = 'block';
-      placeholderResult.style.display = 'none';
+      if (placeholderResult) placeholderResult.style.display = 'none';
     } else {
-      result.removeAttribute('src');
-      result.style.display = 'none';
-      placeholderResult.style.display = 'block';
+      if (result) {
+        result.removeAttribute('src');
+        result.style.display = 'none';
+      }
+      if (placeholderResult) placeholderResult.style.display = 'block';
     }
 
     count.textContent = data.count;
