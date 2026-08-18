@@ -6,6 +6,7 @@ Dapat menerima gambar dari Laravel via base64 atau multipart
 import base64
 import json
 import os
+from datetime import datetime
 from pathlib import Path
 from threading import Lock
 from typing import Optional
@@ -20,6 +21,14 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from ultralytics import YOLO
 
+# Try to import pyodbc for SQL Server (optional)
+try:
+    import pyodbc
+    PYODBC_AVAILABLE = True
+except ImportError:
+    PYODBC_AVAILABLE = False
+    pyodbc = None
+
 load_dotenv()
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -31,6 +40,13 @@ CONFIDENCE = float(os.getenv("CONFIDENCE", "0.35"))
 IOU = float(os.getenv("IOU", "0.45"))
 DEVICE = os.getenv("DEVICE", "cpu")
 MAX_FRAME_WIDTH = int(os.getenv("MAX_FRAME_WIDTH", "1280"))
+
+# Database Configuration
+DB_HOST = os.getenv("DB_HOST", "localhost")
+DB_USER = os.getenv("DB_USER", "sa")
+DB_PASSWORD = os.getenv("DB_PASSWORD", "")
+DB_NAME = os.getenv("DB_NAME", "master")
+DB_TABLE = os.getenv("DB_TABLE", "machine_detection_copper")
 
 app = FastAPI(
     title="Wire Branch Detection API",
@@ -406,6 +422,95 @@ async def detect_batch(request: BatchDetectionRequest):
         "processed": len([r for r in results if r.get("success")]),
         "results": results
     }
+
+
+# ==================== DATABASE ENDPOINTS ====================
+
+class SaveDetectionRequest(BaseModel):
+    """Request untuk menyimpan hasil deteksi ke database"""
+    count: int
+
+
+class SaveDetectionResponse(BaseModel):
+    """Response untuk save detection"""
+    success: bool
+    id: Optional[int] = None
+    count: int
+    message: str
+
+
+def get_db_connection():
+    """Create database connection"""
+    if not PYODBC_AVAILABLE:
+        raise HTTPException(status_code=500, detail="pyodbc not installed")
+
+    connection_string = (
+        f"DRIVER={{ODBC Driver 17 for SQL Server}};"
+        f"SERVER={DB_HOST};"
+        f"DATABASE={DB_NAME};"
+        f"UID={DB_USER};"
+        f"PWD={DB_PASSWORD};"
+    )
+
+    try:
+        conn = pyodbc.connect(connection_string)
+        return conn
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database connection failed: {str(e)}")
+
+
+@app.post("/api/save-detection", response_model=SaveDetectionResponse)
+async def save_detection(request: SaveDetectionRequest):
+    """
+    Simpan hasil deteksi ke SQL Server database.
+    """
+    if not PYODBC_AVAILABLE:
+        raise HTTPException(
+            status_code=500,
+            detail="Database driver (pyodbc) not installed. Run: pip install pyodbc"
+        )
+
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Get current timestamp
+        now = datetime.now()
+        dt_ins = now.strftime("%Y-%m-%d")
+        seq_time = now.strftime("%Y-%m-%d %H:%M:%S")
+
+        # Insert query
+        insert_query = f"""
+            INSERT INTO {DB_TABLE} (count, dt_ins, seq_time)
+            OUTPUT INSERTED.id
+            VALUES (?, ?, ?)
+        """
+
+        cursor.execute(insert_query, (request.count, dt_ins, seq_time))
+        row = cursor.fetchone()
+        inserted_id = row[0] if row else None
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        return SaveDetectionResponse(
+            success=True,
+            id=inserted_id,
+            count=request.count,
+            message=f"Saved successfully at {seq_time}"
+        )
+
+    except pyodbc.Error as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Database error: {str(e)}"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error: {str(e)}"
+        )
 
 
 if __name__ == "__main__":

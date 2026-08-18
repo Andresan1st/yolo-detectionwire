@@ -300,10 +300,13 @@
         <input type="file" id="fileInput" accept="image/*">
       </div>
       <div class="card-footer">
-        <div class="btn-group">
-          <button class="primary" id="startCam">🎥 Aktifkan Kamera</button>
+        <div class="btn-group" style="flex-wrap: wrap; gap: 8px;">
+          <button class="secondary" id="uploadBtn">📁 Pilih File</button>
           <button class="secondary" id="stopCam" disabled>⏹ Berhenti</button>
+          <button class="primary" id="startCam">🎥 Aktifkan Kamera</button>
+          <button class="secondary" id="saveDbBtn" disabled style="background: var(--accent); color: #fff;">💾 Simpan ke DB</button>
         </div>
+        <input type="file" id="fileInput" accept="image/*">
         <div class="detections-panel" id="detectionsPanel" style="display:none; margin-top:16px;">
           <div class="detections-header">📋 Detail Deteksi</div>
           <div id="detectionsList"></div>
@@ -325,6 +328,7 @@ const fileInput = document.getElementById('fileInput');
 const uploadBtn = document.getElementById('uploadBtn');
 const startCam = document.getElementById('startCam');
 const stopCam = document.getElementById('stopCam');
+const saveDbBtn = document.getElementById('saveDbBtn');
 const count = document.getElementById('count');
 const message = document.getElementById('message');
 const detectionsPanel = document.getElementById('detectionsPanel');
@@ -336,6 +340,7 @@ const liveIndicator = document.getElementById('liveIndicator');
 const API_URL = window.location.origin;
 const WS_URL = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws/detect`;
 let stream, timer, busy = false, ws;
+let lastDetectionCount = 0;
 
 function setMessage(text, type = 'info') {
   message.textContent = text;
@@ -443,6 +448,13 @@ function handleDetectionResult(data) {
   }
 
   count.textContent = data.count;
+  lastDetectionCount = data.count;
+
+  // Enable save button if count > 0
+  if (saveDbBtn && data.count > 0) {
+    saveDbBtn.disabled = false;
+  }
+
   if (data.count > 0) {
     setMessage(`✅ Deteksi langsung: ${data.count} objek ditemukan.`, 'success');
   } else {
@@ -544,6 +556,13 @@ async function sendImage(imageSource) {
     }
 
     count.textContent = data.count;
+    lastDetectionCount = data.count;
+
+    // Enable save button if count > 0
+    if (saveDbBtn && data.count > 0) {
+      saveDbBtn.disabled = false;
+    }
+
     if (data.count > 0) {
       setMessage(`✅ Deteksi berhasil! ${data.count} objek ditemukan.`, 'success');
     } else {
@@ -602,6 +621,37 @@ stopCam.onclick = () => {
   if (liveIndicator) liveIndicator.style.display = 'none';
   setMessage('⏹ Kamera berhenti.', 'info');
   clearOverlay();
+};
+
+// Save to Database button
+saveDbBtn.onclick = async () => {
+  if (lastDetectionCount === 0) {
+    setMessage('⚠️ Tidak ada data untuk disimpan.', 'warning');
+    return;
+  }
+
+  setMessage('⏳ Menyimpan ke database...', 'info');
+  saveDbBtn.disabled = true;
+
+  try {
+    const response = await fetch(`${API_URL}/api/save-detection`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ count: lastDetectionCount })
+    });
+
+    const result = await response.json();
+
+    if (response.ok) {
+      setMessage(`✅ Tersimpan! ID: ${result.id}, Count: ${result.count}`, 'success');
+    } else {
+      setMessage('❌ Gagal menyimpan: ' + (result.detail || 'Unknown error'), 'error');
+    }
+  } catch (error) {
+    setMessage('❌ Error: ' + error.message, 'error');
+  } finally {
+    saveDbBtn.disabled = false;
+  }
 };
 
 uploadBtn.onclick = () => fileInput.click();
