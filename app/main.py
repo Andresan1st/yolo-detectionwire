@@ -21,12 +21,20 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from ultralytics import YOLO
 
-# Try to import pyodbc for SQL Server (optional)
+# Try to import database drivers
+PYODBC_AVAILABLE = False
+PYMSSQL_AVAILABLE = False
+
+try:
+    import pymssql
+    PYMSSQL_AVAILABLE = True
+except ImportError:
+    pymssql = None
+
 try:
     import pyodbc
     PYODBC_AVAILABLE = True
 except ImportError:
-    PYODBC_AVAILABLE = False
     pyodbc = None
 
 load_dotenv()
@@ -441,22 +449,39 @@ class SaveDetectionResponse(BaseModel):
 
 def get_db_connection():
     """Create database connection"""
-    if not PYODBC_AVAILABLE:
-        raise HTTPException(status_code=500, detail="pyodbc not installed")
+    if PYMSSQL_AVAILABLE:
+        # Use pymssql (recommended - easier to install)
+        try:
+            conn = pymssql.connect(
+                server=DB_HOST,
+                user=DB_USER,
+                password=DB_PASSWORD,
+                database=DB_NAME
+            )
+            return conn
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Database connection failed (pymssql): {str(e)}")
 
-    connection_string = (
-        f"DRIVER={{ODBC Driver 17 for SQL Server}};"
-        f"SERVER={DB_HOST};"
-        f"DATABASE={DB_NAME};"
-        f"UID={DB_USER};"
-        f"PWD={DB_PASSWORD};"
-    )
+    elif PYODBC_AVAILABLE:
+        # Fallback to pyodbc
+        connection_string = (
+            f"DRIVER={{ODBC Driver 17 for SQL Server}};"
+            f"SERVER={DB_HOST};"
+            f"DATABASE={DB_NAME};"
+            f"UID={DB_USER};"
+            f"PWD={DB_PASSWORD};"
+        )
+        try:
+            conn = pyodbc.connect(connection_string)
+            return conn
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Database connection failed (pyodbc): {str(e)}")
 
-    try:
-        conn = pyodbc.connect(connection_string)
-        return conn
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database connection failed: {str(e)}")
+    else:
+        raise HTTPException(
+            status_code=500,
+            detail="No database driver available. Install pymssql: pip install pymssql"
+        )
 
 
 @app.post("/api/save-detection", response_model=SaveDetectionResponse)
@@ -464,10 +489,10 @@ async def save_detection(request: SaveDetectionRequest):
     """
     Simpan hasil deteksi ke SQL Server database.
     """
-    if not PYODBC_AVAILABLE:
+    if not PYMSSQL_AVAILABLE and not PYODBC_AVAILABLE:
         raise HTTPException(
             status_code=500,
-            detail="Database driver (pyodbc) not installed. Run: pip install pyodbc"
+            detail="Database driver not installed. Run: pip install pymssql"
         )
 
     try:
