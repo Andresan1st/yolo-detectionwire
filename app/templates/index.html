@@ -630,11 +630,21 @@ saveDbBtn.onclick = async () => {
   setMessage('⏳ Menyimpan ke database...', 'info');
   saveDbBtn.disabled = true;
 
+  const now = new Date();
+  const jakartaOffset = 7 * 60; // UTC+7 for Jakarta
+  const jakartaTime = new Date(now.getTime() + (now.getTimezoneOffset() + jakartaOffset) * 60000);
+  const dt_ins = jakartaTime.toISOString().split('T')[0]; // YYYY-MM-DD
+  const seq_time = jakartaTime.toISOString().replace('T', ' ').split('.')[0]; // YYYY-MM-DD HH:MM:SS
+
   try {
     const response = await fetch(`${API_URL}/api/save-detection`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ countc: lastDetectionCount })
+      body: JSON.stringify({
+        count: lastDetectionCount,
+        dt_ins: dt_ins,
+        seq_time: seq_time
+      })
     });
 
     const text = await response.text();

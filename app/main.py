@@ -437,6 +437,8 @@ async def detect_batch(request: BatchDetectionRequest):
 class SaveDetectionRequest(BaseModel):
     """Request untuk menyimpan hasil deteksi ke database"""
     count: int
+    dt_ins: Optional[str] = None
+    seq_time: Optional[str] = None
 
 
 class SaveDetectionResponse(BaseModel):
@@ -499,10 +501,18 @@ async def save_detection(request: SaveDetectionRequest):
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        # Get current timestamp
+        # Get timestamp - use from request or current time
         now = datetime.now()
-        dt_ins = now.strftime("%Y-%m-%d")
-        seq_time = now.strftime("%Y-%m-%d %H:%M:%S")
+
+        if request.dt_ins:
+            dt_ins = request.dt_ins
+        else:
+            dt_ins = now.strftime("%Y-%m-%d")
+
+        if request.seq_time:
+            seq_time = request.seq_time
+        else:
+            seq_time = now.strftime("%Y-%m-%d %H:%M:%S")
 
         # Insert query
         insert_query = f"""
