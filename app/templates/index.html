@@ -112,16 +112,18 @@
       justify-content: center;
       position: relative;
       min-height: 400px;
+      width: 100%;
+      overflow: hidden;
     }
     .card-body img, .card-body video, .card-body canvas {
       width: 100%;
       height: 100%;
       object-fit: contain;
-    }
-    .card-body canvas {
       position: absolute;
       top: 0;
       left: 0;
+    }
+    .card-body canvas {
       pointer-events: none;
     }
     .card-footer {
@@ -300,9 +302,9 @@
         <h2>📷 Webcam Live</h2>
       </div>
       <div class="card-body" id="inputStage">
-        <div id="cameraContainer" style="display:none; position:relative; width:100%; height:100%;">
-          <video id="video" autoplay muted playsinline></video>
-          <canvas id="overlay"></canvas>
+        <div id="cameraContainer" style="display:none; position:absolute; top:0; left:0; width:100%; height:100%;">
+          <video id="video" autoplay muted playsinline style="width:100%; height:100%; object-fit:contain;"></video>
+          <canvas id="overlay" style="width:100%; height:100%; object-fit:contain;"></canvas>
           <div id="placeholderResult" class="no-detections" style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; color:var(--text-secondary);">
             <div style="font-size:48px; margin-bottom:12px;">🔍</div>
             <p>Upload gambar atau aktifkan kamera<br>untuk memulai deteksi</p>
