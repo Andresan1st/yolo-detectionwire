@@ -66,6 +66,25 @@
       gap: 20px;
     }
 
+    /* Mobile responsive */
+    @media (max-width: 600px) {
+      main { padding: 12px; }
+      .stats { flex-direction: column; align-items: flex-start; }
+      .number { font-size: 36px; }
+      .btn-group { flex-wrap: wrap; }
+      .btn-group button { flex: 1; min-width: 120px; }
+      .card-body { min-height: 280px; }
+      .card-header { padding: 12px 16px; }
+      .card-footer { padding: 12px 16px; }
+      h1 { font-size: 22px; }
+      .message { font-size: 12px; padding: 10px 12px; }
+    }
+
+    @media (min-width: 900px) {
+      .grid { grid-template-columns: 1fr; }
+      .card-body { min-height: 500px; }
+    }
+
     .card {
       border: 1px solid var(--border);
       border-radius: 16px;
