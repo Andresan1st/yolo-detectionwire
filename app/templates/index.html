@@ -634,7 +634,7 @@ saveDbBtn.onclick = async () => {
     const response = await fetch(`${API_URL}/api/save-detection`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ count: lastDetectionCount })
+      body: JSON.stringify({ countc: lastDetectionCount })
     });
 
     const text = await response.text();
