@@ -62,11 +62,8 @@
 
     .grid {
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: 1fr;
       gap: 20px;
-    }
-    @media (max-width: 900px) {
-      .grid { grid-template-columns: 1fr; }
     }
 
     .card {
@@ -74,6 +71,7 @@
       border-radius: 16px;
       background: var(--bg-card);
       overflow: hidden;
+      max-width: 100%;
     }
     .card-header {
       padding: 16px 20px;
@@ -88,12 +86,13 @@
       font-weight: 600;
     }
     .card-body {
-      aspect-ratio: 16 / 10;
+      aspect-ratio: 16 / 9;
       background: var(--bg-input);
       display: flex;
       align-items: center;
       justify-content: center;
       position: relative;
+      min-height: 400px;
     }
     .card-body img, .card-body video, .card-body canvas {
       width: 100%;
