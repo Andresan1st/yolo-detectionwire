@@ -637,7 +637,14 @@ saveDbBtn.onclick = async () => {
       body: JSON.stringify({ count: lastDetectionCount })
     });
 
-    const result = await response.json();
+    const text = await response.text();
+    let result;
+    try {
+      result = JSON.parse(text);
+    } catch {
+      setMessage('❌ Server error: ' + text.substring(0, 200), 'error');
+      return;
+    }
 
     if (response.ok) {
       setMessage(`✅ Tersimpan! ID: ${result.id}, Count: ${result.count}`, 'success');
