@@ -648,6 +648,7 @@ saveDbBtn.onclick = async () => {
     });
 
     const text = await response.text();
+    console.log(text,"cok");
     let result;
     try {
       result = JSON.parse(text);
