@@ -445,7 +445,7 @@ class SaveDetectionResponse(BaseModel):
     """Response untuk save detection"""
     success: bool
     id: Optional[int] = None
-    count: int
+    countc: int
     message: str
 
 
@@ -514,16 +514,28 @@ async def save_detection(request: SaveDetectionRequest):
         else:
             seq_time = now.strftime("%Y-%m-%d %H:%M:%S")
 
-        # Insert query
-        insert_query = f"""
-            INSERT INTO {DB_TABLE} (countc, dt_ins, seq_time)
-            OUTPUT INSERTED.id
-            VALUES (?, ?, ?)
-        """
+        # Insert query - pymssql uses %s, pyodbc uses ?
+        if PYMSSQL_AVAILABLE:
+            insert_query = f"""
+                INSERT INTO {DB_TABLE} (countc, dt_ins, seq_time)
+                VALUES (%s, %s, %s)
+            """
+        else:
+            insert_query = f"""
+                INSERT INTO {DB_TABLE} (countc, dt_ins, seq_time)
+                OUTPUT INSERTED.id
+                VALUES (?, ?, ?)
+            """
 
-        cursor.execute(insert_query, (request.countc, dt_ins, seq_time))
-        row = cursor.fetchone()
-        inserted_id = row[0] if row else None
+        if PYMSSQL_AVAILABLE:
+            cursor.execute(insert_query, (request.countc, dt_ins, seq_time))
+            cursor.execute("SELECT SCOPE_IDENTITY()")
+            row = cursor.fetchone()
+            inserted_id = row[0] if row else None
+        else:
+            cursor.execute(insert_query, (request.countc, dt_ins, seq_time))
+            row = cursor.fetchone()
+            inserted_id = row[0] if row else None
 
         conn.commit()
         cursor.close()
@@ -532,17 +544,10 @@ async def save_detection(request: SaveDetectionRequest):
         return SaveDetectionResponse(
             success=True,
             id=inserted_id,
-            count=request.countc,
+            countc=request.countc,
             message=f"Saved successfully at {seq_time}"
         )
 
-    except pyodbc.Error as e:
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(
-            status_code=500,
-            detail=f"Database error (pyodbc): {str(e)}"
-        )
     except pymssql.Error as e:
         import traceback
         traceback.print_exc()
