@@ -294,7 +294,7 @@
           <div class="upload-icon">📁</div>
           <p>Drag & drop gambar di sini</p>
         </div>
-        <img id="uploadPreview" alt="Preview" style="display:none;">
+        <img id="uploadPreview" alt="Preview" style="display:none; width:100%; height:100%; object-fit:contain;">
         <input type="file" id="fileInput" accept="image/*">
       </div>
       <div class="card-footer">
@@ -461,7 +461,7 @@ function handleDetectionResult(data) {
   renderDetections(data.detections);
   drawOverlay(data.detections || []);
   if (placeholderResult) placeholderResult.style.display = 'none';
-  if (result) result.style.display = 'none';
+  if (uploadPreview) uploadPreview.style.display = 'none';
 }
 
 function createWebSocket() {
@@ -540,14 +540,14 @@ async function sendImage(imageSource) {
 
     if (!response.ok) throw new Error(data.detail || 'Deteksi gagal');
 
-    if (data.annotated_image && result) {
-      result.src = `data:image/jpeg;base64,${data.annotated_image}`;
-      result.style.display = 'block';
+    if (data.annotated_image && uploadPreview) {
+      uploadPreview.src = `data:image/jpeg;base64,${data.annotated_image}`;
+      uploadPreview.style.display = 'block';
       if (placeholderResult) placeholderResult.style.display = 'none';
     } else {
-      if (result) {
-        result.removeAttribute('src');
-        result.style.display = 'none';
+      if (uploadPreview) {
+        uploadPreview.removeAttribute('src');
+        uploadPreview.style.display = 'none';
       }
       if (placeholderResult) placeholderResult.style.display = 'block';
     }
