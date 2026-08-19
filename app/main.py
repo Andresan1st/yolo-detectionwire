@@ -516,7 +516,7 @@ async def save_detection(request: SaveDetectionRequest):
 
         # Insert query
         insert_query = f"""
-            INSERT INTO {DB_TABLE} (count, dt_ins, seq_time)
+            INSERT INTO {DB_TABLE} (countc, dt_ins, seq_time)
             OUTPUT INSERTED.id
             VALUES (?, ?, ?)
         """
@@ -537,11 +537,22 @@ async def save_detection(request: SaveDetectionRequest):
         )
 
     except pyodbc.Error as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(
             status_code=500,
-            detail=f"Database error: {str(e)}"
+            detail=f"Database error (pyodbc): {str(e)}"
+        )
+    except pymssql.Error as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Database error (pymssql): {str(e)}"
         )
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(
             status_code=500,
             detail=f"Error: {str(e)}"
