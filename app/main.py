@@ -436,7 +436,7 @@ async def detect_batch(request: BatchDetectionRequest):
 
 class SaveDetectionRequest(BaseModel):
     """Request untuk menyimpan hasil deteksi ke database"""
-    count: int
+    countc: int
     dt_ins: Optional[str] = None
     seq_time: Optional[str] = None
 
@@ -521,7 +521,7 @@ async def save_detection(request: SaveDetectionRequest):
             VALUES (?, ?, ?)
         """
 
-        cursor.execute(insert_query, (request.count, dt_ins, seq_time))
+        cursor.execute(insert_query, (request.countc, dt_ins, seq_time))
         row = cursor.fetchone()
         inserted_id = row[0] if row else None
 
@@ -532,7 +532,7 @@ async def save_detection(request: SaveDetectionRequest):
         return SaveDetectionResponse(
             success=True,
             id=inserted_id,
-            count=request.count,
+            count=request.countc,
             message=f"Saved successfully at {seq_time}"
         )
 
