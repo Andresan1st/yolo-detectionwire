@@ -307,9 +307,9 @@
         <h2>📷 Webcam Live</h2>
       </div>
       <div class="card-body" id="inputStage">
-        <div id="cameraContainer" style="display:none; position:absolute; top:0; left:0; width:100%; height:100%;">
-          <video id="video" autoplay muted playsinline style="width:100%; height:100%; object-fit:contain;"></video>
-          <canvas id="overlay" style="width:100%; height:100%; object-fit:contain;"></canvas>
+        <div id="cameraContainer" style="display:none; position:relative; width:100%; height:100%;">
+          <video id="video" autoplay muted playsinline style="width:100%; height:100%; object-fit:contain; display:block;"></video>
+          <canvas id="overlay" style="position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none;"></canvas>
           <div id="placeholderResult" class="no-detections" style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; color:var(--text-secondary);">
             <div style="font-size:48px; margin-bottom:12px;">🔍</div>
             <p>Upload gambar atau aktifkan kamera<br>untuk memulai deteksi</p>
@@ -371,6 +371,13 @@ const areaBadge = document.getElementById('areaBadge');
 if (areaBadge) areaBadge.textContent = '📍 Area: ' + AREA;
 
 let stream, timer, busy = false, ws;
+
+// Update overlay size on resize
+window.addEventListener('resize', () => {
+  if (video && video.srcObject) {
+    setOverlaySize();
+  }
+});
 let lastDetectionCount = 0;
 
 function setMessage(text, type = 'info') {
@@ -435,47 +442,41 @@ function renderDetections(detections) {
 
 function setOverlaySize() {
   if (!overlay || !video) return;
-  const rect = video.getBoundingClientRect();
   overlay.width = video.videoWidth || video.clientWidth;
   overlay.height = video.videoHeight || video.clientHeight;
-  overlay.style.width = rect.width + 'px';
-  overlay.style.height = rect.height + 'px';
 }
 
 function drawOverlay(detections) {
   if (!video || !overlay) return;
-  if (!video.videoWidth || !video.videoHeight) return;
 
   setOverlaySize();
 
   const ctx = overlay.getContext('2d');
   if (!ctx) return;
 
-  // Scale factor from detection coordinates to display coordinates
-  const scaleX = overlay.clientWidth / overlay.width;
-  const scaleY = overlay.clientHeight / overlay.height;
-
   ctx.clearRect(0, 0, overlay.width, overlay.height);
-  ctx.lineWidth = 3;
-  ctx.strokeStyle = '#00e676';
-  ctx.font = '16px Segoe UI, sans-serif';
-  ctx.fillStyle = 'rgba(0, 230, 118, 0.85)';
 
   detections.forEach((d) => {
-    // Scale coordinates to match display size
-    const x1 = d.bbox.x1 * scaleX;
-    const y1 = d.bbox.y1 * scaleY;
-    const w = (d.bbox.x2 - d.bbox.x1) * scaleX;
-    const h = (d.bbox.y2 - d.bbox.y1) * scaleY;
+    const x1 = d.bbox.x1;
+    const y1 = d.bbox.y1;
+    const w = d.bbox.x2 - d.bbox.x1;
+    const h = d.bbox.y2 - d.bbox.y1;
 
+    // Draw box
+    ctx.strokeStyle = '#00e676';
+    ctx.lineWidth = 3;
     ctx.strokeRect(x1, y1, w, h);
+
+    // Draw label background
     const label = `${d.label} ${Math.round(d.confidence * 100)}%`;
-    const textWidth = ctx.measureText(label).width + 12;
-    ctx.fillStyle = 'rgba(0, 230, 118, 0.85)';
-    ctx.fillRect(x1, Math.max(0, y1 - 24), textWidth, 22);
+    ctx.font = 'bold 16px Arial';
+    const textWidth = ctx.measureText(label).width;
+    ctx.fillStyle = '#00e676';
+    ctx.fillRect(x1, Math.max(0, y1 - 24), textWidth + 10, 22);
+
+    // Draw label text
     ctx.fillStyle = '#000';
-    ctx.font = 'bold 14px Segoe UI, sans-serif';
-    ctx.fillText(label, x1 + 6, Math.max(16, y1 - 8));
+    ctx.fillText(label, x1 + 5, Math.max(16, y1 - 8));
   });
 }
 
