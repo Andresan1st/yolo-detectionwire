@@ -494,28 +494,28 @@ function handleDetectionResult(data) {
     return;
   }
 
-  // For camera stream: draw current detections directly
-  // For upload: also draw directly
   const currentDetections = data.detections || [];
 
   if (isCameraActive && data.count > 0) {
-    // Lock new detections that don't already exist
+    // Check each current detection - only lock if truly NEW (not overlapping with any locked)
     currentDetections.forEach((d) => {
-      // Create key based on label and approximate position (5px grid for tighter matching)
-      const key = `${d.label}_${Math.round(d.bbox.x1 / 5)}_${Math.round(d.bbox.y1 / 5)}`;
+      const isNew = !Object.values(lockedDetections).some(locked => {
+        // Check if bounding boxes overlap significantly (IoU-like check)
+        const xOverlap = Math.max(0, Math.min(d.bbox.x2, locked.bbox.x2) - Math.max(d.bbox.x1, locked.bbox.x1));
+        const yOverlap = Math.max(0, Math.min(d.bbox.y2, locked.bbox.y2) - Math.max(d.bbox.y1, locked.bbox.y1));
+        const overlap = xOverlap * yOverlap;
+        const dArea = (d.bbox.x2 - d.bbox.x1) * (d.bbox.y2 - d.bbox.y1);
+        const overlapRatio = overlap / dArea;
+        return overlapRatio > 0.3; // 30% overlap = same object
+      });
 
-      // Only add if not already locked
-      if (!lockedDetections[key]) {
+      if (isNew) {
+        const key = `${d.label}_${Object.keys(lockedDetections).length}`;
         lockedDetections[key] = {
           label: d.label,
           confidence: d.confidence,
-          bbox: d.bbox
+          bbox: { ...d.bbox } // Copy bbox
         };
-      } else {
-        // Update confidence if higher
-        if (d.confidence > lockedDetections[key].confidence) {
-          lockedDetections[key].confidence = d.confidence;
-        }
       }
     });
 
