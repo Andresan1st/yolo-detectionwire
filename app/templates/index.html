@@ -512,11 +512,16 @@ function handleDetectionResult(data) {
     if (placeholderResult) placeholderResult.style.display = 'none';
     if (uploadPreview) uploadPreview.style.display = 'none';
   } else {
-    // No detections - keep showing last stable detections
-    // Don't clear them immediately
-    count.textContent = '0';
-    if (saveDbBtn) saveDbBtn.disabled = true;
-    setMessage('⏳ Menunggu deteksi...', 'info');
+    // No detections - KEEP showing last stable detections
+    // Just update the count display but keep the overlay
+    count.textContent = stableDetections.length > 0 ? stableDetections.length : '0';
+    if (saveDbBtn) saveDbBtn.disabled = (stableDetections.length === 0);
+
+    if (stableDetections.length > 0) {
+      setMessage(`⏳ Hold: ${stableDetections.length} objek terdeteksi.`, 'info');
+    } else {
+      setMessage('⏳ Menunggu deteksi...', 'info');
+    }
   }
 }
 
