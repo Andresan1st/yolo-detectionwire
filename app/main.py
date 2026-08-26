@@ -556,7 +556,7 @@ async def save_detection(request: SaveDetectionRequest):
         return SaveDetectionResponse(
             success=True,
             id=inserted_id,
-            count=request.countc,
+            countc=request.countc,
             message=f"Saved successfully at {seq_time}, Area: {area}"
         )
 
