@@ -201,6 +201,15 @@ def root_ui():
     return FileResponse(TEMPLATE_DIR / "index.html")
 
 
+@app.get("/{area}")
+def root_with_area(area: str):
+    """Serve frontend HTML page with area identifier (e.g., /labqc, /produksi)"""
+    # Skip API routes
+    if area in ["api", "health", "info", "ui", "ws", "docs", "openapi.json", "redoc"]:
+        raise HTTPException(status_code=404, detail="Not found")
+    return FileResponse(TEMPLATE_DIR / "index.html")
+
+
 @app.get("/health", response_model=HealthResponse)
 def health():
     """Health check endpoint"""
@@ -439,6 +448,7 @@ class SaveDetectionRequest(BaseModel):
     countc: int
     dt_ins: Optional[str] = None
     seq_time: Optional[str] = None
+    area: Optional[str] = None
 
 
 class SaveDetectionResponse(BaseModel):
@@ -514,28 +524,41 @@ async def save_detection(request: SaveDetectionRequest):
         else:
             seq_time = now.strftime("%Y-%m-%d %H:%M:%S")
 
+        area = request.area if request.area else "default"
+
         # Insert query - pymssql uses %s, pyodbc uses ?
         if PYMSSQL_AVAILABLE:
             insert_query = f"""
-                INSERT INTO {DB_TABLE} (countc, dt_ins, seq_time)
-                VALUES (%s, %s, %s)
+                INSERT INTO {DB_TABLE} (countc, dt_ins, seq_time, area)
+                VALUES (%s, %s, %s, %s)
             """
         else:
             insert_query = f"""
-                INSERT INTO {DB_TABLE} (countc, dt_ins, seq_time)
+                INSERT INTO {DB_TABLE} (countc, dt_ins, seq_time, area)
                 OUTPUT INSERTED.id
-                VALUES (?, ?, ?)
+                VALUES (?, ?, ?, ?)
             """
 
         if PYMSSQL_AVAILABLE:
-            cursor.execute(insert_query, (request.countc, dt_ins, seq_time))
+            cursor.execute(insert_query, (request.countc, dt_ins, seq_time, area))
             cursor.execute("SELECT SCOPE_IDENTITY()")
             row = cursor.fetchone()
             inserted_id = row[0] if row else None
         else:
-            cursor.execute(insert_query, (request.countc, dt_ins, seq_time))
+            cursor.execute(insert_query, (request.countc, dt_ins, seq_time, area))
             row = cursor.fetchone()
             inserted_id = row[0] if row else None
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        return SaveDetectionResponse(
+            success=True,
+            id=inserted_id,
+            count=request.countc,
+            message=f"Saved successfully at {seq_time}, Area: {area}"
+        )
 
         conn.commit()
         cursor.close()
