@@ -435,32 +435,47 @@ function renderDetections(detections) {
 
 function setOverlaySize() {
   if (!overlay || !video) return;
-  overlay.width = video.videoWidth;
-  overlay.height = video.videoHeight;
-  overlay.style.width = video.clientWidth + 'px';
-  overlay.style.height = video.clientHeight + 'px';
+  const rect = video.getBoundingClientRect();
+  overlay.width = video.videoWidth || video.clientWidth;
+  overlay.height = video.videoHeight || video.clientHeight;
+  overlay.style.width = rect.width + 'px';
+  overlay.style.height = rect.height + 'px';
 }
 
 function drawOverlay(detections) {
-  if (!video || !overlay || !video.videoWidth || !video.videoHeight) return;
+  if (!video || !overlay) return;
+  if (!video.videoWidth || !video.videoHeight) return;
+
   setOverlaySize();
+
   const ctx = overlay.getContext('2d');
   if (!ctx) return;
+
+  // Scale factor from detection coordinates to display coordinates
+  const scaleX = overlay.clientWidth / overlay.width;
+  const scaleY = overlay.clientHeight / overlay.height;
+
   ctx.clearRect(0, 0, overlay.width, overlay.height);
   ctx.lineWidth = 3;
   ctx.strokeStyle = '#00e676';
-  ctx.font = '18px Segoe UI';
+  ctx.font = '16px Segoe UI, sans-serif';
   ctx.fillStyle = 'rgba(0, 230, 118, 0.85)';
 
   detections.forEach((d) => {
-    const [x1, y1, x2, y2] = [d.bbox.x1, d.bbox.y1, d.bbox.x2, d.bbox.y2];
-    ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+    // Scale coordinates to match display size
+    const x1 = d.bbox.x1 * scaleX;
+    const y1 = d.bbox.y1 * scaleY;
+    const w = (d.bbox.x2 - d.bbox.x1) * scaleX;
+    const h = (d.bbox.y2 - d.bbox.y1) * scaleY;
+
+    ctx.strokeRect(x1, y1, w, h);
     const label = `${d.label} ${Math.round(d.confidence * 100)}%`;
     const textWidth = ctx.measureText(label).width + 12;
-    ctx.fillRect(x1, Math.max(0, y1 - 28), textWidth, 26);
-    ctx.fillStyle = '#000';
-    ctx.fillText(label, x1 + 6, Math.max(18, y1 - 8));
     ctx.fillStyle = 'rgba(0, 230, 118, 0.85)';
+    ctx.fillRect(x1, Math.max(0, y1 - 24), textWidth, 22);
+    ctx.fillStyle = '#000';
+    ctx.font = 'bold 14px Segoe UI, sans-serif';
+    ctx.fillText(label, x1 + 6, Math.max(16, y1 - 8));
   });
 }
 
