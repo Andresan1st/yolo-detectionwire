@@ -685,6 +685,47 @@ stopCam.onclick = () => {
   clearOverlay();
 };
 
+// Upload button handlers
+uploadBtn.onclick = () => fileInput.click();
+
+fileInput.onchange = (e) => {
+  const file = e.target.files[0];
+  if (file) processFile(file);
+};
+
+uploadArea.ondragover = (e) => {
+  e.preventDefault();
+  uploadArea.style.background = 'rgba(0, 186, 124, 0.1)';
+};
+uploadArea.ondragleave = () => {
+  uploadArea.style.background = '';
+};
+uploadArea.ondrop = (e) => {
+  e.preventDefault();
+  uploadArea.style.background = '';
+  const file = e.dataTransfer.files[0];
+  if (file && file.type.startsWith('image/')) processFile(file);
+};
+
+function processFile(file) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    uploadPreview.src = e.target.result;
+    if (uploadPreview) uploadPreview.style.display = 'block';
+    if (cameraContainer) cameraContainer.style.display = 'none';
+    if (overlay) overlay.style.display = 'none';
+    if (video) video.style.display = 'none';
+    if (uploadArea) uploadArea.style.display = 'none';
+    if (liveIndicator) liveIndicator.style.display = 'none';
+    clearInterval(timer);
+
+    const img = new Image();
+    img.onload = () => sendImage(img);
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
 // Save to Database button
 saveDbBtn.onclick = async () => {
   if (lastDetectionCount === 0) {
@@ -735,46 +776,7 @@ saveDbBtn.onclick = async () => {
   }
 };
 
-uploadBtn.onclick = () => fileInput.click();
-
-fileInput.onchange = (e) => {
-  const file = e.target.files[0];
-  if (file) processFile(file);
-};
-
-uploadArea.ondragover = (e) => {
-  e.preventDefault();
-  uploadArea.style.background = 'rgba(0, 186, 124, 0.1)';
-};
-uploadArea.ondragleave = () => {
-  uploadArea.style.background = '';
-};
-uploadArea.ondrop = (e) => {
-  e.preventDefault();
-  uploadArea.style.background = '';
-  const file = e.dataTransfer.files[0];
-  if (file && file.type.startsWith('image/')) processFile(file);
-};
-
-function processFile(file) {
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    uploadPreview.src = e.target.result;
-    if (uploadPreview) uploadPreview.style.display = 'block';
-    if (cameraContainer) cameraContainer.style.display = 'none';
-    if (overlay) overlay.style.display = 'none';
-    if (video) video.style.display = 'none';
-    if (uploadArea) uploadArea.style.display = 'none';
-    if (liveIndicator) liveIndicator.style.display = 'none';
-    clearInterval(timer);
-
-    const img = new Image();
-    img.onload = () => sendImage(img);
-    img.src = e.target.result;
-  };
-  reader.readAsDataURL(file);
-}
-
+// Initial state
 if (video) video.style.display = 'none';
 if (overlay) overlay.style.display = 'none';
 });
