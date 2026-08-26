@@ -371,6 +371,8 @@ const areaBadge = document.getElementById('areaBadge');
 if (areaBadge) areaBadge.textContent = '📍 Area: ' + AREA;
 
 let stream, timer, busy = false, ws;
+let lastDetectionCount = 0;
+let stableDetections = []; // Store last stable detections
 
 // Update overlay size on resize
 window.addEventListener('resize', () => {
@@ -378,7 +380,6 @@ window.addEventListener('resize', () => {
     setOverlaySize();
   }
 });
-let lastDetectionCount = 0;
 
 function setMessage(text, type = 'info') {
   message.textContent = text;
@@ -494,6 +495,24 @@ function handleDetectionResult(data) {
     return;
   }
 
+  // If new detections found, update stable detections
+  if (data.count > 0) {
+    stableDetections = data.detections || [];
+    setMessage(`✅ Deteksi langsung: ${data.count} objek ditemukan.`, 'success');
+  } else {
+    // Keep showing last stable detections for 3 seconds
+    setTimeout(() => {
+      // Check if still no new detections
+      if (lastDetectionCount === data.count && stableDetections.length > 0) {
+        stableDetections = [];
+        clearOverlay();
+        renderDetections([]);
+        setMessage('⏳ Menunggu deteksi...', 'info');
+      }
+    }, 3000);
+    setMessage(`⏳ Menunggu...`, 'info');
+  }
+
   count.textContent = data.count;
   lastDetectionCount = data.count;
 
@@ -502,14 +521,8 @@ function handleDetectionResult(data) {
     saveDbBtn.disabled = false;
   }
 
-  if (data.count > 0) {
-    setMessage(`✅ Deteksi langsung: ${data.count} objek ditemukan.`, 'success');
-  } else {
-    setMessage('⚠️ Tidak ada objek terdeteksi.', 'warning');
-  }
-
-  renderDetections(data.detections);
-  drawOverlay(data.detections || []);
+  renderDetections(stableDetections);
+  drawOverlay(stableDetections);
   if (placeholderResult) placeholderResult.style.display = 'none';
   if (uploadPreview) uploadPreview.style.display = 'none';
 }
