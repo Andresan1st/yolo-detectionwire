@@ -570,7 +570,7 @@ function sendFrame() {
       busy = false;
       setMessage('❌ Gagal mengirim frame: ' + error.message, 'error');
     }
-  }, 'image/jpeg', 0.7);
+  }, 'image/jpeg', 0.85); // Higher quality for better precision
 }
 
 // Upload handlers and fallback detection
@@ -663,7 +663,7 @@ startCam.onclick = async () => {
     };
 
     createWebSocket();
-    timer = setInterval(sendFrame, 1000);
+    timer = setInterval(sendFrame, 300); // Faster interval for smoother streaming
   } catch (error) {
     setMessage('❌ Kamera error: ' + error.message, 'error');
   }
