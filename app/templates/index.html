@@ -297,7 +297,6 @@
         <div class="number-label">kawat terdeteksi</div>
       </div>
       <div class="message info" id="message">Tekan "Aktifkan Kamera" atau upload gambar.</div>
-      <span id="liveIndicator" class="badge" style="display:none; font-size:12px; align-self:flex-end;">● LIVE</span>
     </div>
   </section>
 
@@ -305,6 +304,7 @@
     <article class="card">
       <div class="card-header">
         <h2>📷 Webcam Live</h2>
+        <span id="liveIndicator" class="badge" style="display:none; font-size:12px;">● LIVE</span>
       </div>
       <div class="card-body" id="inputStage">
         <div id="cameraContainer" style="display:none; position:relative; width:100%; height:100%;">
@@ -372,7 +372,8 @@ if (areaBadge) areaBadge.textContent = '📍 Area: ' + AREA;
 
 let stream, timer, busy = false, ws;
 let lastDetectionCount = 0;
-let stableDetections = []; // Store last stable detections
+let lockedDetections = {}; // {label: {count, latest}}
+let isCameraActive = false;
 
 // Update overlay size on resize
 window.addEventListener('resize', () => {
@@ -381,12 +382,7 @@ window.addEventListener('resize', () => {
   }
 });
 
-function setMessage(text, type = 'info') {
-  message.textContent = text;
-  message.className = 'message ' + type;
-}
-
-function setStatus(connected) {
+function getConfidenceClass(conf) {
   if (connected) {
     statusBadge.textContent = '● Connected';
     statusBadge.className = 'badge connected';
@@ -415,7 +411,12 @@ function getConfidenceClass(conf) {
   return 'low';
 }
 
-function renderDetections(detections) {
+function setMessage(text, type = 'info') {
+  message.textContent = text;
+  message.className = 'message ' + type;
+}
+
+function setStatus(connected) {
   if (!detections || detections.length === 0) {
     detectionsPanel.style.display = 'none';
     return;
@@ -495,35 +496,39 @@ function handleDetectionResult(data) {
     return;
   }
 
-  // If new detections found, update stable detections
-  if (data.count > 0) {
-    stableDetections = data.detections || [];
-    count.textContent = data.count;
-    lastDetectionCount = data.count;
+  // Locking logic for camera stream
+  if (data.count > 0 && isCameraActive) {
+    // Add new detections to locked set
+    data.detections.forEach((d) => {
+      const key = `${d.label}_${Math.round(d.bbox.x1 / 50)}_${Math.round(d.bbox.y1 / 50)}`;
+      lockedDetections[key] = {
+        label: d.label,
+        confidence: d.confidence,
+        bbox: d.bbox
+      };
+    });
 
     // Enable save button
     if (saveDbBtn) {
       saveDbBtn.disabled = false;
     }
 
-    setMessage(`✅ Deteksi langsung: ${data.count} objek ditemukan.`, 'success');
-    renderDetections(stableDetections);
-  } else {
-    // No detections - keep showing last stable detections
-    count.textContent = stableDetections.length > 0 ? stableDetections.length : '0';
-    if (saveDbBtn) saveDbBtn.disabled = (stableDetections.length === 0);
-
-    if (stableDetections.length > 0) {
-      setMessage(`⏳ Hold: ${stableDetections.length} objek terdeteksi.`, 'info');
-    } else {
-      setMessage('⏳ Menunggu deteksi...', 'info');
-    }
+    setMessage(`✅ ${Object.keys(lockedDetections).length} objek dikunci.`, 'success');
   }
 
-  // Always redraw overlay with stable detections
+  // Always show locked detections
+  const lockedArray = Object.values(lockedDetections);
+  const totalCount = lockedArray.length;
+
+  count.textContent = totalCount;
+  lastDetectionCount = totalCount;
+
   if (placeholderResult) placeholderResult.style.display = 'none';
   if (uploadPreview) uploadPreview.style.display = 'none';
-  drawOverlay(stableDetections);
+
+  // Draw overlay with locked detections
+  drawOverlay(lockedArray);
+  renderDetections(lockedArray);
 }
 
 function createWebSocket() {
@@ -638,6 +643,10 @@ async function sendImage(imageSource) {
 
 startCam.onclick = async () => {
   try {
+    // Reset locked detections when starting camera
+    lockedDetections = {};
+    isCameraActive = true;
+
     stream = await navigator.mediaDevices.getUserMedia({
       video: { facingMode: 'environment' },
       audio: false
@@ -653,7 +662,7 @@ startCam.onclick = async () => {
     if (startCam) startCam.disabled = true;
     if (stopCam) stopCam.disabled = false;
     if (liveIndicator) liveIndicator.style.display = 'inline';
-    setMessage('📹 Kamera aktif. Deteksi berjalan...', 'info');
+    setMessage('📹 Kamera aktif. Arahkan ke objek kawat.', 'info');
 
     video.onloadedmetadata = () => {
       setOverlaySize();
@@ -671,6 +680,7 @@ stopCam.onclick = () => {
   clearInterval(timer);
   if (stream) stream.getTracks().forEach(t => t.stop());
   stream = null;
+  isCameraActive = false;
   if (cameraContainer) cameraContainer.style.display = 'none';
   if (overlay) overlay.style.display = 'none';
   if (video) video.style.display = 'none';
@@ -678,7 +688,7 @@ stopCam.onclick = () => {
   if (startCam) startCam.disabled = false;
   if (stopCam) stopCam.disabled = true;
   if (liveIndicator) liveIndicator.style.display = 'none';
-  setMessage('⏹ Kamera berhenti.', 'info');
+  setMessage(`⏹ Kamera berhenti. Total: ${lastDetectionCount} objek.`, 'info');
   clearOverlay();
 };
 
