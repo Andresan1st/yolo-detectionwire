@@ -456,8 +456,9 @@ class SaveDetectionResponse(BaseModel):
     success: bool
     id: Optional[int] = None
     countc: int
+    area: str
     message: str
-    area:str
+  
 
 
 def get_db_connection():
@@ -558,6 +559,7 @@ async def save_detection(request: SaveDetectionRequest):
             success=True,
             id=inserted_id,
             countc=request.countc,
+            area=area,
             message=f"Saved successfully at {seq_time}, Area: {area}"
         )
 
