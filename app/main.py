@@ -457,6 +457,7 @@ class SaveDetectionResponse(BaseModel):
     id: Optional[int] = None
     countc: int
     message: str
+    area:str
 
 
 def get_db_connection():
