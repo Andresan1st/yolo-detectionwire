@@ -495,36 +495,29 @@ function handleDetectionResult(data) {
     return;
   }
 
-  // If new detections found, update stable detections
+  // If new detections found, update stable detections and KEEP them
   if (data.count > 0) {
     stableDetections = data.detections || [];
+    count.textContent = data.count;
+    lastDetectionCount = data.count;
+
+    // Enable save button
+    if (saveDbBtn) {
+      saveDbBtn.disabled = false;
+    }
+
     setMessage(`✅ Deteksi langsung: ${data.count} objek ditemukan.`, 'success');
+    renderDetections(stableDetections);
+    drawOverlay(stableDetections);
+    if (placeholderResult) placeholderResult.style.display = 'none';
+    if (uploadPreview) uploadPreview.style.display = 'none';
   } else {
-    // Keep showing last stable detections for 3 seconds
-    setTimeout(() => {
-      // Check if still no new detections
-      if (lastDetectionCount === data.count && stableDetections.length > 0) {
-        stableDetections = [];
-        clearOverlay();
-        renderDetections([]);
-        setMessage('⏳ Menunggu deteksi...', 'info');
-      }
-    }, 3000);
-    setMessage(`⏳ Menunggu...`, 'info');
+    // No detections - keep showing last stable detections
+    // Don't clear them immediately
+    count.textContent = '0';
+    if (saveDbBtn) saveDbBtn.disabled = true;
+    setMessage('⏳ Menunggu deteksi...', 'info');
   }
-
-  count.textContent = data.count;
-  lastDetectionCount = data.count;
-
-  // Enable save button if count > 0
-  if (saveDbBtn && data.count > 0) {
-    saveDbBtn.disabled = false;
-  }
-
-  renderDetections(stableDetections);
-  drawOverlay(stableDetections);
-  if (placeholderResult) placeholderResult.style.display = 'none';
-  if (uploadPreview) uploadPreview.style.display = 'none';
 }
 
 function createWebSocket() {
