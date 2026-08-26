@@ -380,16 +380,6 @@ window.addEventListener('resize', () => {
   }
 });
 
-function getConfidenceClass(conf) {
-  if (connected) {
-    statusBadge.textContent = '● Connected';
-    statusBadge.className = 'badge connected';
-  } else {
-    statusBadge.textContent = '○ Disconnected';
-    statusBadge.className = 'badge disconnected';
-  }
-}
-
 async function checkHealth() {
   try {
     const res = await fetch(`${API_URL}/health`);
@@ -414,7 +404,7 @@ function setMessage(text, type = 'info') {
   message.className = 'message ' + type;
 }
 
-function setStatus(connected) {
+function renderDetections(detections) {
   if (!detections || detections.length === 0) {
     detectionsPanel.style.display = 'none';
     return;
@@ -438,6 +428,16 @@ function setStatus(connected) {
   }).join('');
 
   detectionsPanel.style.display = 'block';
+}
+
+function setStatus(connected) {
+  if (connected) {
+    statusBadge.textContent = '● Connected';
+    statusBadge.className = 'badge connected';
+  } else {
+    statusBadge.textContent = '○ Disconnected';
+    statusBadge.className = 'badge disconnected';
+  }
 }
 
 function setOverlaySize() {
