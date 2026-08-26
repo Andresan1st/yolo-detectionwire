@@ -494,27 +494,42 @@ function handleDetectionResult(data) {
     return;
   }
 
-  // Locking logic for camera stream
-  if (data.count > 0 && isCameraActive) {
-    // Add new detections to locked set
-    data.detections.forEach((d) => {
-      const key = `${d.label}_${Math.round(d.bbox.x1 / 50)}_${Math.round(d.bbox.y1 / 50)}`;
-      lockedDetections[key] = {
-        label: d.label,
-        confidence: d.confidence,
-        bbox: d.bbox
-      };
+  // For camera stream: draw current detections directly
+  // For upload: also draw directly
+  const currentDetections = data.detections || [];
+
+  if (isCameraActive && data.count > 0) {
+    // Lock new detections that don't already exist
+    currentDetections.forEach((d) => {
+      // Create key based on label and approximate position (5px grid for tighter matching)
+      const key = `${d.label}_${Math.round(d.bbox.x1 / 5)}_${Math.round(d.bbox.y1 / 5)}`;
+
+      // Only add if not already locked
+      if (!lockedDetections[key]) {
+        lockedDetections[key] = {
+          label: d.label,
+          confidence: d.confidence,
+          bbox: d.bbox
+        };
+      } else {
+        // Update confidence if higher
+        if (d.confidence > lockedDetections[key].confidence) {
+          lockedDetections[key].confidence = d.confidence;
+        }
+      }
     });
 
-    // Enable save button
-    if (saveDbBtn) {
+    // Enable save button if we have locked detections
+    if (saveDbBtn && Object.keys(lockedDetections).length > 0) {
       saveDbBtn.disabled = false;
     }
 
-    setMessage(`✅ ${Object.keys(lockedDetections).length} objek dikunci.`, 'success');
+    if (Object.keys(lockedDetections).length > 0) {
+      setMessage(`✅ ${Object.keys(lockedDetections).length} objek dikunci.`, 'success');
+    }
   }
 
-  // Always show locked detections
+  // Show count from locked detections
   const lockedArray = Object.values(lockedDetections);
   const totalCount = lockedArray.length;
 
