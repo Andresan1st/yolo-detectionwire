@@ -371,6 +371,8 @@ if (areaBadge) areaBadge.textContent = '📍 Area: ' + AREA;
 let stream, timer, busy = false, ws;
 let lastDetectionCount = 0;
 let isCameraActive = false;
+let lastDetections = []; // Store last detections
+let boxTimeout = null; // Timer to clear box after 10 seconds
 
 // Update overlay size on resize
 window.addEventListener('resize', () => {
@@ -490,19 +492,18 @@ function handleDetectionResult(data) {
   busy = false;
   if (!data.success) {
     setMessage('❌ ' + (data.error || 'Deteksi gagal'), 'error');
-    // Clear overlay on error
-    clearOverlay();
-    count.textContent = '0';
-    renderDetections([]);
     return;
   }
 
   const currentDetections = data.detections || [];
   const totalCount = data.count || currentDetections.length;
 
+  // Store current detections
+  lastDetections = currentDetections;
+  lastDetectionCount = totalCount;
+
   // Update count
   count.textContent = totalCount;
-  lastDetectionCount = totalCount;
 
   // Show/hide placeholder
   if (placeholderResult) {
@@ -514,10 +515,24 @@ function handleDetectionResult(data) {
   drawOverlay(currentDetections);
   renderDetections(currentDetections);
 
-  // Update message
+  // Clear previous timeout
+  if (boxTimeout) {
+    clearTimeout(boxTimeout);
+  }
+
+  // Set 10 second timeout to clear box
   if (totalCount > 0) {
-    setMessage(`✅ ${totalCount} objek terdeteksi`, 'success');
+    setMessage(`✅ ${totalCount} objek terdeteksi (bertahan 10 detik)`, 'success');
     if (saveDbBtn) saveDbBtn.disabled = false;
+
+    boxTimeout = setTimeout(() => {
+      // Clear overlay after 10 seconds
+      clearOverlay();
+      renderDetections([]);
+      count.textContent = '0';
+      if (placeholderResult) placeholderResult.style.display = 'flex';
+      setMessage('📹 Mendeteksi...', 'info');
+    }, 10000); // 10 seconds
   } else {
     setMessage('📹 Mendeteksi...', 'info');
   }
@@ -637,6 +652,7 @@ startCam.onclick = async () => {
   try {
     // Reset count when starting camera
     lastDetectionCount = 0;
+    lastDetections = [];
     count.textContent = '0';
     isCameraActive = true;
 
@@ -655,15 +671,16 @@ startCam.onclick = async () => {
     if (startCam) startCam.disabled = true;
     if (stopCam) stopCam.disabled = false;
     if (liveIndicator) liveIndicator.style.display = 'inline';
-    setMessage('📹 Kamera aktif. Arahkan ke objek kawat.', 'info');
 
     video.onloadedmetadata = () => {
       setOverlaySize();
       video.play();
     };
 
+    // Start detection immediately
     createWebSocket();
-    timer = setInterval(sendFrame, 300); // Faster interval for smoother streaming
+    timer = setInterval(sendFrame, 300);
+    setMessage('📹 Kamera aktif. Mendeteksi...', 'info');
   } catch (error) {
     setMessage('❌ Kamera error: ' + error.message, 'error');
   }
@@ -737,38 +754,30 @@ document.getElementById('saveDbBtn').onclick = async () => {
 // Initial state
 if (video) video.style.display = 'none';
 if (overlay) overlay.style.display = 'none';
-});
 
-// Upload button handlers - outside DOMContentLoaded
-document.getElementById('uploadBtn').onclick = () => document.getElementById('fileInput').click();
+// Upload button handlers
+uploadBtn.onclick = () => fileInput.click();
 
-document.getElementById('fileInput').onchange = (e) => {
+fileInput.onchange = (e) => {
   const file = e.target.files[0];
-  if (file) processFileExternal(file);
+  if (file) processFile(file);
 };
 
-document.getElementById('uploadArea').ondragover = (e) => {
+uploadArea.ondragover = (e) => {
   e.preventDefault();
-  document.getElementById('uploadArea').style.background = 'rgba(0, 186, 124, 0.1)';
+  uploadArea.style.background = 'rgba(0, 186, 124, 0.1)';
 };
-document.getElementById('uploadArea').ondragleave = () => {
-  document.getElementById('uploadArea').style.background = '';
+uploadArea.ondragleave = () => {
+  uploadArea.style.background = '';
 };
-document.getElementById('uploadArea').ondrop = (e) => {
+uploadArea.ondrop = (e) => {
   e.preventDefault();
-  document.getElementById('uploadArea').style.background = '';
+  uploadArea.style.background = '';
   const file = e.dataTransfer.files[0];
-  if (file && file.type.startsWith('image/')) processFileExternal(file);
+  if (file && file.type.startsWith('image/')) processFile(file);
 };
 
-function processFileExternal(file) {
-  const uploadPreview = document.getElementById('uploadPreview');
-  const cameraContainer = document.getElementById('cameraContainer');
-  const overlay = document.getElementById('overlay');
-  const video = document.getElementById('video');
-  const uploadArea = document.getElementById('uploadArea');
-  const liveIndicator = document.getElementById('liveIndicator');
-
+function processFile(file) {
   const reader = new FileReader();
   reader.onload = (e) => {
     uploadPreview.src = e.target.result;
@@ -786,6 +795,7 @@ function processFileExternal(file) {
   };
   reader.readAsDataURL(file);
 }
+});
 </script>
 </body>
 </html>
