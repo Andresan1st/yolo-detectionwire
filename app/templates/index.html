@@ -370,7 +370,6 @@ if (areaBadge) areaBadge.textContent = '📍 Area: ' + AREA;
 
 let stream, timer, busy = false, ws;
 let lastDetectionCount = 0;
-let lockedDetections = {}; // {label: {count, latest}}
 let isCameraActive = false;
 
 // Update overlay size on resize
@@ -491,57 +490,37 @@ function handleDetectionResult(data) {
   busy = false;
   if (!data.success) {
     setMessage('❌ ' + (data.error || 'Deteksi gagal'), 'error');
+    // Clear overlay on error
+    clearOverlay();
+    count.textContent = '0';
+    renderDetections([]);
     return;
   }
 
   const currentDetections = data.detections || [];
+  const totalCount = data.count || currentDetections.length;
 
-  if (isCameraActive && data.count > 0) {
-    // Check each current detection - only lock if truly NEW (not overlapping with any locked)
-    currentDetections.forEach((d) => {
-      const isNew = !Object.values(lockedDetections).some(locked => {
-        // Check if bounding boxes overlap significantly (IoU-like check)
-        const xOverlap = Math.max(0, Math.min(d.bbox.x2, locked.bbox.x2) - Math.max(d.bbox.x1, locked.bbox.x1));
-        const yOverlap = Math.max(0, Math.min(d.bbox.y2, locked.bbox.y2) - Math.max(d.bbox.y1, locked.bbox.y1));
-        const overlap = xOverlap * yOverlap;
-        const dArea = (d.bbox.x2 - d.bbox.x1) * (d.bbox.y2 - d.bbox.y1);
-        const overlapRatio = overlap / dArea;
-        return overlapRatio > 0.3; // 30% overlap = same object
-      });
-
-      if (isNew) {
-        const key = `${d.label}_${Object.keys(lockedDetections).length}`;
-        lockedDetections[key] = {
-          label: d.label,
-          confidence: d.confidence,
-          bbox: { ...d.bbox } // Copy bbox
-        };
-      }
-    });
-
-    // Enable save button if we have locked detections
-    if (saveDbBtn && Object.keys(lockedDetections).length > 0) {
-      saveDbBtn.disabled = false;
-    }
-
-    if (Object.keys(lockedDetections).length > 0) {
-      setMessage(`✅ ${Object.keys(lockedDetections).length} objek dikunci.`, 'success');
-    }
-  }
-
-  // Show count from locked detections
-  const lockedArray = Object.values(lockedDetections);
-  const totalCount = lockedArray.length;
-
+  // Update count
   count.textContent = totalCount;
   lastDetectionCount = totalCount;
 
-  if (placeholderResult) placeholderResult.style.display = 'none';
+  // Show/hide placeholder
+  if (placeholderResult) {
+    placeholderResult.style.display = totalCount > 0 ? 'none' : 'flex';
+  }
   if (uploadPreview) uploadPreview.style.display = 'none';
 
-  // Draw overlay with locked detections
-  drawOverlay(lockedArray);
-  renderDetections(lockedArray);
+  // Draw current detections
+  drawOverlay(currentDetections);
+  renderDetections(currentDetections);
+
+  // Update message
+  if (totalCount > 0) {
+    setMessage(`✅ ${totalCount} objek terdeteksi`, 'success');
+    if (saveDbBtn) saveDbBtn.disabled = false;
+  } else {
+    setMessage('📹 Mendeteksi...', 'info');
+  }
 }
 
 function createWebSocket() {
@@ -656,8 +635,9 @@ async function sendImage(imageSource) {
 
 startCam.onclick = async () => {
   try {
-    // Reset locked detections when starting camera
-    lockedDetections = {};
+    // Reset count when starting camera
+    lastDetectionCount = 0;
+    count.textContent = '0';
     isCameraActive = true;
 
     stream = await navigator.mediaDevices.getUserMedia({
