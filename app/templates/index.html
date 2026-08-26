@@ -322,8 +322,8 @@
       <div class="card-footer">
         <div class="btn-group" style="flex-wrap: wrap; gap: 8px;">
           <button class="secondary" id="uploadBtn">📁 Pilih File</button>
-          <!-- <button class="secondary" id="stopCam" disabled>⏹ Berhenti</button>
-          <button class="primary" id="startCam">🎥 Aktifkan Kamera</button> -->
+          <button class="secondary" id="stopCam" disabled>⏹ Berhenti</button>
+          <button class="primary" id="startCam">🎥 Aktifkan Kamera</button>
           <button class="secondary" id="saveDbBtn" disabled style="background: var(--accent); color: #fff;">💾 Simpan ke DB</button>
         </div>
         <div class="detections-panel" id="detectionsPanel" style="display:none; margin-top:16px;">
@@ -685,29 +685,90 @@ stopCam.onclick = () => {
   clearOverlay();
 };
 
-// Upload button handlers
-uploadBtn.onclick = () => fileInput.click();
+// Save to Database button
+document.getElementById('saveDbBtn').onclick = async () => {
+  if (lastDetectionCount === 0) {
+    setMessage('⚠️ Tidak ada data untuk disimpan.', 'warning');
+    return;
+  }
 
-fileInput.onchange = (e) => {
+  setMessage('⏳ Menyimpan ke database...', 'info');
+  document.getElementById('saveDbBtn').disabled = true;
+
+  const now = new Date();
+  const jakartaOffset = 7 * 60;
+  const jakartaTime = new Date(now.getTime() + (now.getTimezoneOffset() + jakartaOffset) * 60000);
+  const dt_ins = jakartaTime.toISOString().split('T')[0];
+  const seq_time = jakartaTime.toISOString().replace('T', ' ').split('.')[0];
+
+  try {
+    const response = await fetch(`${API_URL}/api/save-detection`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        countc: lastDetectionCount,
+        dt_ins: dt_ins,
+        seq_time: seq_time,
+        area: AREA
+      })
+    });
+
+    const text = await response.text();
+    let result;
+    try {
+      result = JSON.parse(text);
+    } catch {
+      setMessage('❌ Server error: ' + text.substring(0, 200), 'error');
+      return;
+    }
+
+    if (response.ok) {
+      setMessage(`✅ Tersimpan! ID: ${result.id}, Count: ${result.count}`, 'success');
+    } else {
+      setMessage('❌ Gagal menyimpan: ' + (result.detail || 'Unknown error'), 'error');
+    }
+  } catch (error) {
+    setMessage('❌ Error: ' + error.message, 'error');
+  } finally {
+    document.getElementById('saveDbBtn').disabled = false;
+  }
+};
+
+// Initial state
+if (video) video.style.display = 'none';
+if (overlay) overlay.style.display = 'none';
+});
+
+// Upload button handlers - outside DOMContentLoaded
+document.getElementById('uploadBtn').onclick = () => document.getElementById('fileInput').click();
+
+document.getElementById('fileInput').onchange = (e) => {
   const file = e.target.files[0];
-  if (file) processFile(file);
+  if (file) processFileExternal(file);
 };
 
-uploadArea.ondragover = (e) => {
+document.getElementById('uploadArea').ondragover = (e) => {
   e.preventDefault();
-  uploadArea.style.background = 'rgba(0, 186, 124, 0.1)';
+  document.getElementById('uploadArea').style.background = 'rgba(0, 186, 124, 0.1)';
 };
-uploadArea.ondragleave = () => {
-  uploadArea.style.background = '';
+document.getElementById('uploadArea').ondragleave = () => {
+  document.getElementById('uploadArea').style.background = '';
 };
-uploadArea.ondrop = (e) => {
+document.getElementById('uploadArea').ondrop = (e) => {
   e.preventDefault();
-  uploadArea.style.background = '';
+  document.getElementById('uploadArea').style.background = '';
   const file = e.dataTransfer.files[0];
-  if (file && file.type.startsWith('image/')) processFile(file);
+  if (file && file.type.startsWith('image/')) processFileExternal(file);
 };
 
-function processFile(file) {
+function processFileExternal(file) {
+  const uploadPreview = document.getElementById('uploadPreview');
+  const cameraContainer = document.getElementById('cameraContainer');
+  const overlay = document.getElementById('overlay');
+  const video = document.getElementById('video');
+  const uploadArea = document.getElementById('uploadArea');
+  const liveIndicator = document.getElementById('liveIndicator');
+
   const reader = new FileReader();
   reader.onload = (e) => {
     uploadPreview.src = e.target.result;
@@ -725,61 +786,6 @@ function processFile(file) {
   };
   reader.readAsDataURL(file);
 }
-
-// Save to Database button
-saveDbBtn.onclick = async () => {
-  if (lastDetectionCount === 0) {
-    setMessage('⚠️ Tidak ada data untuk disimpan.', 'warning');
-    return;
-  }
-
-  setMessage('⏳ Menyimpan ke database...', 'info');
-  saveDbBtn.disabled = true;
-
-  const now = new Date();
-  const jakartaOffset = 7 * 60; // UTC+7 for Jakarta
-  const jakartaTime = new Date(now.getTime() + (now.getTimezoneOffset() + jakartaOffset) * 60000);
-  const dt_ins = jakartaTime.toISOString().split('T')[0]; // YYYY-MM-DD
-  const seq_time = jakartaTime.toISOString().replace('T', ' ').split('.')[0]; // YYYY-MM-DD HH:MM:SS
-
-  try {
-    const response = await fetch(`${API_URL}/api/save-detection`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        countc: lastDetectionCount,
-        dt_ins: dt_ins,
-        seq_time: seq_time,
-        area: AREA
-      })
-    });
-
-    const text = await response.text();
-    console.log(text,"cok");
-    let result;
-    try {
-      result = JSON.parse(text);
-    } catch {
-      setMessage('❌ Server error: ' + text.substring(0, 200), 'error');
-      return;
-    }
-
-    if (response.ok) {
-      setMessage(`✅ Tersimpan! ID: ${result.id}, Count: ${result.count}`, 'success');
-    } else {
-      setMessage('❌ Gagal menyimpan: ' + (result.detail || 'Unknown error'), 'error');
-    }
-  } catch (error) {
-    setMessage('❌ Error: ' + error.message, 'error');
-  } finally {
-    saveDbBtn.disabled = false;
-  }
-};
-
-// Initial state
-if (video) video.style.display = 'none';
-if (overlay) overlay.style.display = 'none';
-});
 </script>
 </body>
 </html>
