@@ -516,18 +516,20 @@ async def save_detection(request: SaveDetectionRequest):
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        # Get timestamp - use from request or current time in Asia/Jakarta (UTC+7)
-        now = datetime.now(JAKARTA_TZ)
+        # Get timestamp - use system local time (Asia/Jakarta WIB)
+        now = datetime.now()
+        # Convert to Asia/Jakarta timezone explicitly
+        jakarta_time = now.astimezone(JAKARTA_TZ)
 
         if request.dt_ins:
             dt_ins = request.dt_ins
         else:
-            dt_ins = now.strftime("%Y-%m-%d")
+            dt_ins = jakarta_time.strftime("%Y-%m-%d")
 
         if request.seq_time:
             seq_time = request.seq_time
         else:
-            seq_time = now.strftime("%Y-%m-%d %H:%M:%S")
+            seq_time = jakarta_time.strftime("%Y-%m-%d %H:%M:%S")
 
         area = request.area if request.area else "default"
 
