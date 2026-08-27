@@ -275,6 +275,109 @@
     }
 
     input[type="file"] { display: none; }
+
+    /* Loading Overlay */
+    .loading-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.8);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+      flex-direction: column;
+      gap: 20px;
+    }
+    .loading-overlay.active {
+      display: flex;
+    }
+    .loading-spinner {
+      width: 60px;
+      height: 60px;
+      border: 4px solid var(--border);
+      border-top-color: var(--accent-green);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    .loading-text {
+      color: var(--text-primary);
+      font-size: 18px;
+      font-weight: 600;
+    }
+
+    /* Popup Notification */
+    .popup-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.6);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 1001;
+    }
+    .popup-overlay.active {
+      display: flex;
+    }
+    .popup {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 32px;
+      text-align: center;
+      max-width: 400px;
+      width: 90%;
+      animation: popupIn 0.3s ease;
+    }
+    @keyframes popupIn {
+      from {
+        opacity: 0;
+        transform: scale(0.8);
+      }
+      to {
+        opacity: 1;
+        transform: scale(1);
+      }
+    }
+    .popup-icon {
+      font-size: 64px;
+      margin-bottom: 16px;
+    }
+    .popup-title {
+      font-size: 24px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .popup-message {
+      color: var(--text-secondary);
+      font-size: 14px;
+      margin-bottom: 24px;
+      line-height: 1.5;
+    }
+    .popup-btn {
+      padding: 12px 32px;
+      border-radius: 8px;
+      border: none;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .popup-btn.success {
+      background: var(--accent-green);
+      color: #000;
+    }
+    .popup-btn.success:hover {
+      background: #00d68f;
+    }
   </style>
 </head>
 <body>
@@ -336,29 +439,79 @@
   </section>
 </main>
 
+<!-- Loading Overlay -->
+<div class="loading-overlay" id="loadingOverlay">
+  <div class="loading-spinner"></div>
+  <div class="loading-text" id="loadingText">Memproses gambar...</div>
+</div>
+
+<!-- Popup Notification -->
+<div class="popup-overlay" id="popupOverlay">
+  <div class="popup">
+    <div class="popup-icon" id="popupIcon">✅</div>
+    <div class="popup-title" id="popupTitle">Berhasil!</div>
+    <div class="popup-message" id="popupMessage">Data berhasil disimpan ke database.</div>
+    <button class="popup-btn success" id="popupBtn" onclick="closePopup()">OK</button>
+  </div>
+</div>
+
 <script>
 window.addEventListener('DOMContentLoaded', () => {
   const video = document.getElementById('video');
   const overlay = document.getElementById('overlay');
   const cameraContainer = document.getElementById('cameraContainer');
-const result = document.getElementById('result');
-const uploadPreview = document.getElementById('uploadPreview');
-const uploadArea = document.getElementById('uploadArea');
-const fileInput = document.getElementById('fileInput');
-const uploadBtn = document.getElementById('uploadBtn');
-const startCam = document.getElementById('startCam');
-const stopCam = document.getElementById('stopCam');
-const saveDbBtn = document.getElementById('saveDbBtn');
-const count = document.getElementById('count');
-const message = document.getElementById('message');
-const detectionsPanel = document.getElementById('detectionsPanel');
-const detectionsList = document.getElementById('detectionsList');
-const statusBadge = document.getElementById('status');
-const placeholderResult = document.getElementById('placeholderResult');
-const liveIndicator = document.getElementById('liveIndicator');
+  const uploadPreview = document.getElementById('uploadPreview');
+  const uploadArea = document.getElementById('uploadArea');
+  const fileInput = document.getElementById('fileInput');
+  const uploadBtn = document.getElementById('uploadBtn');
+  const startCam = document.getElementById('startCam');
+  const stopCam = document.getElementById('stopCam');
+  const saveDbBtn = document.getElementById('saveDbBtn');
+  const count = document.getElementById('count');
+  const message = document.getElementById('message');
+  const detectionsPanel = document.getElementById('detectionsPanel');
+  const detectionsList = document.getElementById('detectionsList');
+  const statusBadge = document.getElementById('status');
+  const placeholderResult = document.getElementById('placeholderResult');
+  const liveIndicator = document.getElementById('liveIndicator');
+  const loadingOverlay = document.getElementById('loadingOverlay');
+  const loadingText = document.getElementById('loadingText');
+  const popupOverlay = document.getElementById('popupOverlay');
+  const popupIcon = document.getElementById('popupIcon');
+  const popupTitle = document.getElementById('popupTitle');
+  const popupMessage = document.getElementById('popupMessage');
 
-const API_URL = window.location.origin;
-const WS_URL = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws/detect`;
+  const API_URL = window.location.origin;
+  const WS_URL = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws/detect`;
+
+  // Loading functions
+  function showLoading(text = 'Memproses gambar...') {
+    loadingText.textContent = text;
+    loadingOverlay.classList.add('active');
+  }
+
+  function hideLoading() {
+    loadingOverlay.classList.remove('active');
+  }
+
+  // Popup functions
+  window.closePopup = function() {
+    popupOverlay.classList.remove('active');
+  };
+
+  function showPopup(icon, title, message) {
+    popupIcon.textContent = icon;
+    popupTitle.textContent = title;
+    popupMessage.textContent = message;
+    popupOverlay.classList.add('active');
+  }
+
+  // Close popup on overlay click
+  popupOverlay.onclick = (e) => {
+    if (e.target === popupOverlay) {
+      closePopup();
+    }
+  };
 
 // Get area from URL path (e.g., /labqc, /produksi)
 const pathParts = window.location.pathname.split('/').filter(Boolean);
@@ -592,6 +745,7 @@ function sendFrame() {
 async function sendImage(imageSource) {
   if (busy) return;
   busy = true;
+  showLoading('🔍 Menganalisis gambar...');
   setMessage('⏳ Menganalisis gambar...', 'info');
 
   try {
@@ -645,6 +799,7 @@ async function sendImage(imageSource) {
     setMessage('❌ Error: ' + error.message, 'error');
   } finally {
     busy = false;
+    hideLoading();
   }
 }
 
@@ -711,7 +866,9 @@ document.getElementById('saveDbBtn').onclick = async () => {
 
   setMessage('⏳ Menyimpan ke database...', 'info');
   document.getElementById('saveDbBtn').disabled = true;
+  showLoading('💾 Menyimpan ke database...');
 
+  // Get current time in Jakarta timezone (client side)
   const now = new Date();
   const jakartaOffset = 7 * 60;
   const jakartaTime = new Date(now.getTime() + (now.getTimezoneOffset() + jakartaOffset) * 60000);
@@ -735,17 +892,25 @@ document.getElementById('saveDbBtn').onclick = async () => {
     try {
       result = JSON.parse(text);
     } catch {
+      hideLoading();
       setMessage('❌ Server error: ' + text.substring(0, 200), 'error');
+      showPopup('❌', 'Gagal!', 'Terjadi kesalahan pada server. Silakan coba lagi.');
       return;
     }
 
     if (response.ok) {
+      hideLoading();
       setMessage(`✅ Tersimpan! ID: ${result.id}, Count: ${result.count}`, 'success');
+      showPopup('✅', 'Berhasil Tersimpan!', `Data berhasil disimpan ke database.\n\nID: ${result.id}\nJumlah: ${result.count}\nArea: ${AREA}\nWaktu: ${seq_time}`);
     } else {
+      hideLoading();
       setMessage('❌ Gagal menyimpan: ' + (result.detail || 'Unknown error'), 'error');
+      showPopup('❌', 'Gagal!', result.detail || 'Terjadi kesalahan saat menyimpan data.');
     }
   } catch (error) {
+    hideLoading();
     setMessage('❌ Error: ' + error.message, 'error');
+    showPopup('❌', 'Gagal!', 'Tidak dapat terhubung ke server. Periksa koneksi internet Anda.');
   } finally {
     document.getElementById('saveDbBtn').disabled = false;
   }
