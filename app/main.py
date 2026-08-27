@@ -6,10 +6,13 @@ Dapat menerima gambar dari Laravel via base64 atau multipart
 import base64
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from threading import Lock
 from typing import Optional
+
+# Asia/Jakarta timezone (UTC+7)
+JAKARTA_TZ = timezone(timedelta(hours=7))
 
 import cv2
 import numpy as np
@@ -513,8 +516,8 @@ async def save_detection(request: SaveDetectionRequest):
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        # Get timestamp - use from request or current time
-        now = datetime.now()
+        # Get timestamp - use from request or current time in Asia/Jakarta (UTC+7)
+        now = datetime.now(JAKARTA_TZ)
 
         if request.dt_ins:
             dt_ins = request.dt_ins
