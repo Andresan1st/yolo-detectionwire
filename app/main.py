@@ -526,10 +526,7 @@ async def save_detection(request: SaveDetectionRequest):
         else:
             dt_ins = time.strftime("%Y-%m-%d", local_time)
 
-        if request.seq_time:
-            seq_time = request.seq_time
-        else:
-            seq_time = time.strftime("%Y-%m-%d %H:%M:%S", local_time)
+        seq_time = time.strftime("%Y-%m-%d %H:%M:%S", local_time)
 
         area = request.area if request.area else "default"
 
