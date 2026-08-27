@@ -6,6 +6,7 @@ Dapat menerima gambar dari Laravel via base64 atau multipart
 import base64
 import json
 import os
+import time
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from threading import Lock
@@ -516,20 +517,19 @@ async def save_detection(request: SaveDetectionRequest):
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        # Get timestamp - use system local time (Asia/Jakarta WIB)
-        now = datetime.now()
-        # Convert to Asia/Jakarta timezone explicitly
-        jakarta_time = now.astimezone(JAKARTA_TZ)
+        # Get timestamp - use system LOCAL time (Asia/Jakarta WIB)
+        # time.localtime() returns local time based on system timezone
+        local_time = time.localtime()
 
         if request.dt_ins:
             dt_ins = request.dt_ins
         else:
-            dt_ins = jakarta_time.strftime("%Y-%m-%d")
+            dt_ins = time.strftime("%Y-%m-%d", local_time)
 
         if request.seq_time:
             seq_time = request.seq_time
         else:
-            seq_time = jakarta_time.strftime("%Y-%m-%d %H:%M:%S")
+            seq_time = time.strftime("%Y-%m-%d %H:%M:%S", local_time)
 
         area = request.area if request.area else "default"
 
