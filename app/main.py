@@ -159,8 +159,33 @@ def generate_frames():
     global _model
     from ultralytics import YOLO
 
-    # Buka kamera
-    cap = cv2.VideoCapture(0)
+    # Coba buka kamera dengan berbagai index
+    cap = None
+    for idx in [0, 1, 2]:
+        cap = cv2.VideoCapture(idx)
+        if cap.isOpened():
+            print(f"Kamera ditemukan di index {idx}")
+            break
+        else:
+            cap.release()
+            cap = None
+
+    if cap is None or not cap.isOpened():
+        print("Kamera tidak ditemukan, gunakan placeholder")
+        # Generate placeholder frame
+        while True:
+            placeholder = np.zeros((480, 640, 3), dtype=np.uint8)
+            cv2.putText(placeholder, "Kamera tidak tersedia", (150, 240),
+                       cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+            cv2.putText(placeholder, "Upload gambar untuk deteksi", (120, 290),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.8, (200, 200, 200), 1)
+            ret, buffer = cv2.imencode('.jpg', placeholder, [cv2.IMWRITE_JPEG_QUALITY, 70])
+            if ret:
+                yield (b'--frame\r\n'
+                       b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
+            import time
+            time.sleep(1)
+        return
 
     # Set resolusi
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
