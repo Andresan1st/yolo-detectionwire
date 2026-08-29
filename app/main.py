@@ -99,17 +99,25 @@ def decode_image(image_data: bytes) -> Optional[np.ndarray]:
     return frame
 
 
-def detect_in_image(frame: np.ndarray) -> tuple[list[dict], str]:
+def detect_in_image(frame: np.ndarray) -> tuple[list[dict], str, tuple]:
     """
     Deteksi objek dalam gambar.
-    Returns: (detections, annotated_image_base64)
+    Returns: (detections, annotated_image_base64, processed_dims)
     """
     height, width = frame.shape[:2]
+
+    # Store original dimensions
+    original_height, original_width = height, width
 
     # Resize jika terlalu besar
     if width > MAX_FRAME_WIDTH:
         scale = MAX_FRAME_WIDTH / width
         frame = cv2.resize(frame, (MAX_FRAME_WIDTH, int(height * scale)))
+        height, width = frame.shape[:2]
+
+    # Deteksi dengan YOLO
+    model = get_model()
+    result = model.predict(frame, conf=CONFIDENCE, iou=IOU, device=DEVICE, verbose=False)[0]
 
     # Deteksi dengan YOLO
     model = get_model()
@@ -159,10 +167,10 @@ def detect_in_image(frame: np.ndarray) -> tuple[list[dict], str]:
     # Encode annotated image ke base64
     success, encoded = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 82])
     if not success:
-        return detections, ""
+        return detections, "", (width, height)
 
     annotated_base64 = base64.b64encode(encoded.tobytes()).decode("ascii")
-    return detections, annotated_base64
+    return detections, annotated_base64, (width, height)
 
 
 # ==================== REQUEST/RESPONSE MODELS ====================
@@ -362,12 +370,14 @@ async def websocket_detect(websocket: WebSocket):
                 })
                 continue
 
-            detections, annotated_base64 = detect_in_image(frame)
+            detections, annotated_base64, processed_dims = detect_in_image(frame)
             await websocket.send_json({
                 "success": True,
                 "count": len(detections),
                 "detections": detections,
-                "annotated_image": annotated_base64 if annotated_base64 else None
+                "annotated_image": annotated_base64 if annotated_base64 else None,
+                "image_width": processed_dims[0],
+                "image_height": processed_dims[1]
             })
     except WebSocketDisconnect:
         return

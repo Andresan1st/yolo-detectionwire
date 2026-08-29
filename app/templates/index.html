@@ -596,41 +596,58 @@ function setStatus(connected) {
 
 function setOverlaySize() {
   if (!overlay || !video) return;
-  overlay.width = video.videoWidth || video.clientWidth;
-  overlay.height = video.videoHeight || video.clientHeight;
+  // Set overlay size to match video actual dimensions
+  overlay.width = video.videoWidth || 640;
+  overlay.height = video.videoHeight || 480;
 }
 
-function drawOverlay(detections) {
+function drawOverlay(detections, imageWidth, imageHeight) {
   if (!video || !overlay) return;
-
-  setOverlaySize();
 
   const ctx = overlay.getContext('2d');
   if (!ctx) return;
 
+  // Get video display dimensions
+  const videoWidth = video.clientWidth || 640;
+  const videoHeight = video.clientHeight || 480;
+
+  // Set overlay size to match video display
+  overlay.width = videoWidth;
+  overlay.height = videoHeight;
+
+  // Calculate scale factors
+  const scaleX = videoWidth / imageWidth;
+  const scaleY = videoHeight / imageHeight;
+
+  // Clear canvas
   ctx.clearRect(0, 0, overlay.width, overlay.height);
 
   detections.forEach((d) => {
-    const x1 = d.bbox.x1;
-    const y1 = d.bbox.y1;
-    const w = d.bbox.x2 - d.bbox.x1;
-    const h = d.bbox.y2 - d.bbox.y1;
+    // Scale bounding box to match video display dimensions
+    const x1 = d.bbox.x1 * scaleX;
+    const y1 = d.bbox.y1 * scaleY;
+    const w = (d.bbox.x2 - d.bbox.x1) * scaleX;
+    const h = (d.bbox.y2 - d.bbox.y1) * scaleY;
 
     // Draw box
     ctx.strokeStyle = '#00e676';
-    ctx.lineWidth = 3;
+    ctx.lineWidth = 2;
     ctx.strokeRect(x1, y1, w, h);
 
-    // Draw label background
+    // Draw label
     const label = `${d.label} ${Math.round(d.confidence * 100)}%`;
-    ctx.font = 'bold 16px Arial';
+    ctx.font = 'bold 14px Arial';
     const textWidth = ctx.measureText(label).width;
-    ctx.fillStyle = '#00e676';
-    ctx.fillRect(x1, Math.max(0, y1 - 24), textWidth + 10, 22);
+    const labelPadding = 4;
+    const labelHeight = 18;
 
-    // Draw label text
-    ctx.fillStyle = '#000';
-    ctx.fillText(label, x1 + 5, Math.max(16, y1 - 8));
+    // Label background
+    ctx.fillStyle = '#00e676';
+    ctx.fillRect(x1, Math.max(0, y1 - labelHeight - labelPadding), textWidth + labelPadding * 2, labelHeight);
+
+    // Label text
+    ctx.fillStyle = '#000000';
+    ctx.fillText(label, x1 + labelPadding, Math.max(14, y1 - labelPadding));
   });
 }
 
@@ -651,6 +668,10 @@ function handleDetectionResult(data) {
   const currentDetections = data.detections || [];
   const totalCount = data.count || currentDetections.length;
 
+  // Get processed image dimensions from server
+  const imageWidth = data.image_width || 640;
+  const imageHeight = data.image_height || 480;
+
   // Store current detections
   lastDetections = currentDetections;
   lastDetectionCount = totalCount;
@@ -662,10 +683,9 @@ function handleDetectionResult(data) {
   if (placeholderResult) {
     placeholderResult.style.display = totalCount > 0 ? 'none' : 'flex';
   }
-  if (uploadPreview) uploadPreview.style.display = 'none';
 
-  // Draw current detections
-  drawOverlay(currentDetections);
+  // Draw bounding boxes with correct scaling based on server dimensions
+  drawOverlay(currentDetections, imageWidth, imageHeight);
   renderDetections(currentDetections);
 
   // Clear previous timeout
