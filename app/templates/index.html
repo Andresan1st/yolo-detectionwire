@@ -407,9 +407,13 @@
         </div>
       </div>
       <div class="card-body" id="inputStage">
-        <div id="cameraContainer" style="display:none; position:relative; width:100%; height:100%;">
-          <img id="streamImage" alt="Stream" style="width:100%; height:100%; object-fit:contain; display:block;">
-          <div id="placeholderResult" class="no-detections" style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; color:var(--text-secondary);">
+        <div id="cameraContainer" style="display:none; position:relative; width:100%; height:100%; background:#242b33;">
+          <img id="streamImage" alt="Stream" style="width:100%; height:100%; object-fit:contain; display:none;">
+          <div id="streamPlaceholder" style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; color:var(--text-secondary);">
+            <div style="font-size:48px; margin-bottom:12px;">📹</div>
+            <p>Menyambungkan kamera...</p>
+          </div>
+          <div id="placeholderResult" class="no-detections" style="position:absolute; inset:0; display:none; flex-direction:column; align-items:center; justify-content:center; color:var(--text-secondary);">
             <div style="font-size:48px; margin-bottom:12px;">🔍</div>
             <p>Upload gambar atau aktifkan kamera<br>untuk memulai deteksi</p>
           </div>
@@ -457,6 +461,7 @@
 <script>
 window.addEventListener('DOMContentLoaded', () => {
   const streamImage = document.getElementById('streamImage');
+  const streamPlaceholder = document.getElementById('streamPlaceholder');
   const cameraContainer = document.getElementById('cameraContainer');
   const uploadPreview = document.getElementById('uploadPreview');
   const uploadArea = document.getElementById('uploadArea');
@@ -597,6 +602,9 @@ window.addEventListener('DOMContentLoaded', () => {
     // Update stream image with annotated image from server
     if (data.annotated_image) {
       streamImage.src = `data:image/jpeg;base64,${data.annotated_image}`;
+      // Hide placeholder, show stream image
+      if (streamPlaceholder) streamPlaceholder.style.display = 'none';
+      if (streamImage) streamImage.style.display = 'block';
     }
 
     // Show/hide placeholder
@@ -749,8 +757,9 @@ window.addEventListener('DOMContentLoaded', () => {
         audio: false
       });
 
-      if (streamImage) streamImage.style.display = 'block';
       if (cameraContainer) cameraContainer.style.display = 'block';
+      if (streamPlaceholder) streamPlaceholder.style.display = 'flex';
+      if (streamImage) streamImage.style.display = 'none';
       if (uploadArea) uploadArea.style.display = 'none';
       if (uploadPreview) uploadPreview.style.display = 'none';
       if (placeholderResult) placeholderResult.style.display = 'none';
@@ -774,6 +783,7 @@ window.addEventListener('DOMContentLoaded', () => {
     if (ws) ws.close();
     if (cameraContainer) cameraContainer.style.display = 'none';
     if (streamImage) streamImage.style.display = 'none';
+    if (streamPlaceholder) streamPlaceholder.style.display = 'none';
     if (uploadArea) uploadArea.style.display = 'block';
     if (startCam) startCam.disabled = false;
     if (stopCam) stopCam.disabled = true;
@@ -881,5 +891,6 @@ window.addEventListener('DOMContentLoaded', () => {
 
   // Initial state
   if (streamImage) streamImage.style.display = 'none';
+  if (streamPlaceholder) streamPlaceholder.style.display = 'none';
 });
 </script>
