@@ -372,7 +372,9 @@ async function loadONNXModel() {
   try {
     // Create ONNX Runtime session
     ort.env.wasm.numThreads = navigator.hardwareConcurrency || 4;
+    ort.env.wasm.loggingLevel = 'error';
 
+    console.log('Loading ONNX model from:', MODEL_URL);
     session = await ort.InferenceSession.create(MODEL_URL, {
       executionProviders: ['wasm', 'webgl', 'cpu']
     });
@@ -381,9 +383,11 @@ async function loadONNXModel() {
     modelStatus.textContent = '✅ Model Ready';
     modelStatus.className = 'badge model-ready';
     console.log('ONNX model loaded successfully');
+    console.log('Input names:', session.inputNames);
+    console.log('Output names:', session.outputNames);
   } catch (error) {
     console.error('Failed to load ONNX model:', error);
-    modelStatus.textContent = '❌ Model Error';
+    modelStatus.textContent = '❌ Model Error: ' + error.message;
     modelStatus.className = 'badge model-error';
   }
 }
@@ -436,7 +440,10 @@ function preprocessImage(imgData, canvas) {
 
 // Run inference
 async function runInference(inputTensor) {
-  if (!session || !isModelReady) return null;
+  if (!session || !isModelReady) {
+    console.warn('Model not ready yet');
+    return null;
+  }
 
   try {
     const feeds = { [session.inputNames[0]]: inputTensor };
@@ -680,11 +687,12 @@ startCam.onclick = async () => {
     stopCam.disabled = false;
     liveIndicator.style.display = 'inline';
 
-    setMessage('📹 Kamera aktif. Mendeteksi...', 'info');
-    showLoading('🔍 Memuat model...');
+    setMessage('📹 Kamera aktif. Memuat model...', 'info');
+    showLoading('🔍 Memuat model ONNX...');
 
     // Wait for model to load
     if (!isModelReady) {
+      console.log('Waiting for model to load...');
       await new Promise(resolve => {
         const checkModel = setInterval(() => {
           if (isModelReady) {
@@ -692,9 +700,22 @@ startCam.onclick = async () => {
             resolve();
           }
         }, 100);
+        // Timeout after 30 seconds
+        setTimeout(() => {
+          clearInterval(checkModel);
+          resolve();
+        }, 30000);
       });
     }
+
+    if (!isModelReady) {
+      hideLoading();
+      setMessage('❌ Model gagal dimuat. Cek console (F12) untuk error.', 'error');
+      return;
+    }
+
     hideLoading();
+    setMessage('✅ Model siap. Mendeteksi...', 'success');
 
     // Start detection loop
     async function detectFrame() {

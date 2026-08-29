@@ -159,6 +159,15 @@ async def get_detections(limit: int = 100, area: Optional[str] = None):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/best.onnx")
+async def serve_onnx_model():
+    """Serve ONNX model file"""
+    model_path = BASE_DIR / "best.onnx"
+    if not model_path.exists():
+        raise HTTPException(status_code=404, detail="Model not found")
+    return FileResponse(str(model_path), media_type="application/octet-stream")
+
+
 # Mount static files
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
