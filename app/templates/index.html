@@ -385,6 +385,19 @@ async function loadONNXModel() {
     console.log('ONNX model loaded successfully');
     console.log('Input names:', session.inputNames);
     console.log('Output names:', session.outputNames);
+
+    // Debug: run a dummy inference to see output shape
+    try {
+      const dummyInput = new Float32Array(3 * 640 * 640);
+      const dummyTensor = new ort.Tensor('float32', dummyInput, [1, 3, 640, 640]);
+      const dummyFeeds = { [session.inputNames[0]]: dummyTensor };
+      const dummyResults = await session.run(dummyFeeds);
+      const dummyOutput = dummyResults[session.outputNames[0]];
+      console.log('Dummy output shape:', dummyOutput.dims);
+      console.log('Dummy output sample (first 20):', Array.from(dummyOutput.data.slice(0, 20)));
+    } catch (e) {
+      console.error('Dummy inference failed:', e);
+    }
   } catch (error) {
     console.error('Failed to load ONNX model:', error);
     modelStatus.textContent = '❌ Model Error: ' + error.message;
@@ -455,53 +468,55 @@ async function runInference(inputTensor) {
   }
 }
 
-// Post-process YOLO output
+// Post-process YOLO output (YOLOv8 format: [1, 84, 8400])
 function postprocessYOLO(output, scale, imgWidth, imgHeight) {
   const detections = [];
 
-  // Output shape: [1, num_predictions, 85] for YOLOv8 (4 box + 80 classes)
-  // Adjust based on your model output
+  // YOLOv8 output shape: [1, 84, 8400] where:
+  // 84 = 4 (bbox: x, y, w, h) + 80 (classes)
+  // For custom model with 1 class: 84 = 4 + 1 = 5
   const outputData = output.data;
-  const numPredictions = output.dims[1];
-  const numClasses = output.dims[2] - 5; // Subtract 4 bbox + 1 obj
+  const dims = output.dims; // [1, 84, 8400] or [1, 5, 8400]
+
+  if (dims.length !== 3) {
+    console.error('Unexpected output shape:', dims);
+    return detections;
+  }
+
+  const numPredictions = dims[2]; // 8400
+  const numValuesPerPred = dims[1]; // 84 or 5
+  const numClasses = numValuesPerPred - 4; // 80 or 1
 
   for (let i = 0; i < numPredictions; i++) {
-    const baseIndex = i * numClasses + 5;
+    // Get box coordinates (first 4 values)
+    const x = outputData[i];
+    const y = outputData[numPredictions + i];
+    const w = outputData[2 * numPredictions + i];
+    const h = outputData[3 * numPredictions + i];
 
-    // Get objectness score
-    const objScore = outputData[baseIndex - 1];
-    if (objScore < CONFIDENCE_THRESHOLD) continue;
-
-    // Get class scores and find max
+    // Get class scores (remaining values)
     let maxScore = 0;
     let maxClass = 0;
     for (let c = 0; c < numClasses; c++) {
-      const score = outputData[baseIndex + c];
+      const score = outputData[(4 + c) * numPredictions + i];
       if (score > maxScore) {
         maxScore = score;
         maxClass = c;
       }
     }
 
-    const confidence = objScore * maxScore;
-    if (confidence < CONFIDENCE_THRESHOLD) continue;
+    if (maxScore < CONFIDENCE_THRESHOLD) continue;
 
-    // Get bbox coordinates (center x, center y, width, height)
-    const cx = outputData[baseIndex - 5];
-    const cy = outputData[baseIndex - 4];
-    const w = outputData[baseIndex - 3];
-    const h = outputData[baseIndex - 2];
-
-    // Convert to original image coordinates
-    const x1 = Math.max(0, (cx - w / 2 - scale.offsetX) / scale.scale);
-    const y1 = Math.max(0, (cy - h / 2 - scale.offsetY) / scale.scale);
-    const x2 = Math.min(imgWidth, (cx + w / 2 - scale.offsetX) / scale.scale);
-    const y2 = Math.min(imgHeight, (cy + h / 2 - scale.offsetY) / scale.scale);
+    // Convert center coordinates to corner coordinates
+    const x1 = Math.max(0, (x - w / 2 - scale.offsetX) / scale.scale);
+    const y1 = Math.max(0, (y - h / 2 - scale.offsetY) / scale.scale);
+    const x2 = Math.min(imgWidth, (x + w / 2 - scale.offsetX) / scale.scale);
+    const y2 = Math.min(imgHeight, (y + h / 2 - scale.offsetY) / scale.scale);
 
     detections.push({
       class: maxClass,
       label: CLASS_NAMES[maxClass] || `Class ${maxClass}`,
-      confidence: confidence,
+      confidence: maxScore,
       bbox: [x1, y1, x2, y2]
     });
   }
@@ -839,6 +854,29 @@ async function processFile(file) {
   setMessage('⏳ Menganalisis...', 'info');
 
   try {
+    // Wait for model to be ready
+    if (!isModelReady) {
+      setMessage('⏳ Menunggu model ONNX...', 'info');
+      await new Promise(resolve => {
+        const checkModel = setInterval(() => {
+          if (isModelReady) {
+            clearInterval(checkModel);
+            resolve();
+          }
+        }, 100);
+        setTimeout(() => {
+          clearInterval(checkModel);
+          resolve();
+        }, 30000);
+      });
+    }
+
+    if (!isModelReady) {
+      setMessage('❌ Model gagal dimuat. Cek console (F12).', 'error');
+      hideLoading();
+      return;
+    }
+
     // Load image
     const img = new Image();
     img.src = URL.createObjectURL(file);
@@ -879,7 +917,7 @@ async function processFile(file) {
         setMessage('⚠️ Tidak ada objek terdeteksi.', 'warning');
       }
     } else {
-      setMessage('⚠️ Model belum siap atau error.', 'warning');
+      setMessage('⚠️ Gagal menjalankan inference.', 'warning');
     }
   } catch (error) {
     console.error('Process error:', error);
