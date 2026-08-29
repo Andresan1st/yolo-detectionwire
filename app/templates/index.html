@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Wire Branch Counter</title>
+  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.17.0/dist/ort.min.js"></script>
   <style>
     * { box-sizing: border-box; }
     :root {
@@ -39,16 +40,8 @@
       padding-bottom: 16px;
       border-bottom: 1px solid var(--border);
     }
-    h1 {
-      margin: 0;
-      font-size: 28px;
-      font-weight: 700;
-    }
-    .subtitle {
-      margin: 4px 0 0;
-      color: var(--text-secondary);
-      font-size: 14px;
-    }
+    h1 { margin: 0; font-size: 28px; font-weight: 700; }
+    .subtitle { margin: 4px 0 0; color: var(--text-secondary); font-size: 14px; }
     .badge {
       padding: 8px 16px;
       border-radius: 20px;
@@ -60,13 +53,8 @@
     .badge.connected { background: rgba(0, 186, 124, 0.2); color: var(--accent-green); }
     .badge.disconnected { background: rgba(244, 33, 46, 0.2); color: var(--accent-red); }
 
-    .grid {
-      display: grid;
-      grid-template-columns: 1fr;
-      gap: 20px;
-    }
+    .grid { display: grid; grid-template-columns: 1fr; gap: 20px; }
 
-    /* Mobile responsive */
     @media (max-width: 600px) {
       main { padding: 12px; }
       .stats { flex-direction: column; align-items: flex-start; }
@@ -80,11 +68,6 @@
       .message { font-size: 12px; padding: 10px 12px; }
       header { flex-direction: column; align-items: flex-start; gap: 10px; }
       header > div:last-child { flex-wrap: wrap; }
-    }
-
-    @media (min-width: 900px) {
-      .grid { grid-template-columns: 1fr; }
-      .card-body { min-height: 500px; }
     }
 
     .card {
@@ -101,11 +84,7 @@
       justify-content: space-between;
       align-items: center;
     }
-    .card-header h2 {
-      margin: 0;
-      font-size: 16px;
-      font-weight: 600;
-    }
+    .card-header h2 { margin: 0; font-size: 16px; font-weight: 600; }
     .card-body {
       aspect-ratio: 16 / 9;
       background: var(--bg-input);
@@ -117,20 +96,12 @@
       width: 100%;
       overflow: hidden;
     }
-    .card-body img, .card-body video, .card-body canvas {
+    .card-body canvas {
       width: 100%;
       height: 100%;
       object-fit: contain;
-      position: absolute;
-      top: 0;
-      left: 0;
     }
-    .card-body canvas {
-      pointer-events: none;
-    }
-    .card-footer {
-      padding: 16px 20px;
-    }
+    .card-footer { padding: 16px 20px; }
 
     .upload-area {
       text-align: center;
@@ -138,11 +109,7 @@
       padding: 20px;
     }
     .upload-area p { margin: 0 0 12px; }
-    .upload-icon {
-      font-size: 48px;
-      margin-bottom: 12px;
-      opacity: 0.5;
-    }
+    .upload-icon { font-size: 48px; margin-bottom: 12px; opacity: 0.5; }
 
     button {
       border: 0;
@@ -153,29 +120,12 @@
       cursor: pointer;
       transition: all 0.2s;
     }
-    button.primary {
-      background: var(--accent-green);
-      color: #000;
-    }
-    button.primary:hover {
-      background: #00d68f;
-    }
-    button.secondary {
-      background: var(--bg-input);
-      color: var(--text-primary);
-      border: 1px solid var(--border);
-    }
-    button.secondary:hover {
-      background: var(--border);
-    }
-    button:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-    .btn-group {
-      display: flex;
-      gap: 10px;
-    }
+    button.primary { background: var(--accent-green); color: #000; }
+    button.primary:hover { background: #00d68f; }
+    button.secondary { background: var(--bg-input); color: var(--text-primary); border: 1px solid var(--border); }
+    button.secondary:hover { background: var(--border); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-group { display: flex; gap: 10px; }
 
     .stats {
       display: flex;
@@ -186,17 +136,8 @@
       border-radius: 12px;
       margin-bottom: 16px;
     }
-    .number {
-      font-size: 48px;
-      font-weight: 800;
-      color: var(--accent-green);
-      line-height: 1;
-      min-width: 60px;
-    }
-    .number-label {
-      color: var(--text-secondary);
-      font-size: 14px;
-    }
+    .number { font-size: 48px; font-weight: 800; color: var(--accent-green); line-height: 1; min-width: 60px; }
+    .number-label { color: var(--text-secondary); font-size: 14px; }
 
     .message {
       padding: 12px 16px;
@@ -242,15 +183,8 @@
       flex-shrink: 0;
     }
     .detection-info { flex: 1; }
-    .detection-label {
-      font-size: 14px;
-      font-weight: 600;
-      margin-bottom: 4px;
-    }
-    .detection-meta {
-      font-size: 12px;
-      color: var(--text-secondary);
-    }
+    .detection-label { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+    .detection-meta { font-size: 12px; color: var(--text-secondary); }
     .confidence-bar {
       width: 100px;
       height: 8px;
@@ -268,15 +202,9 @@
     .confidence-fill.medium { background: var(--accent-orange); }
     .confidence-fill.low { background: var(--accent-red); }
 
-    .no-detections {
-      text-align: center;
-      padding: 20px;
-      color: var(--text-secondary);
-    }
-
+    .no-detections { text-align: center; padding: 20px; color: var(--text-secondary); }
     input[type="file"] { display: none; }
 
-    /* Loading Overlay */
     .loading-overlay {
       position: fixed;
       top: 0;
@@ -291,9 +219,7 @@
       flex-direction: column;
       gap: 20px;
     }
-    .loading-overlay.active {
-      display: flex;
-    }
+    .loading-overlay.active { display: flex; }
     .loading-spinner {
       width: 60px;
       height: 60px;
@@ -302,16 +228,9 @@
       border-radius: 50%;
       animation: spin 1s linear infinite;
     }
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
-    .loading-text {
-      color: var(--text-primary);
-      font-size: 18px;
-      font-weight: 600;
-    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-text { color: var(--text-primary); font-size: 18px; font-weight: 600; }
 
-    /* Popup Notification */
     .popup-overlay {
       position: fixed;
       top: 0;
@@ -324,9 +243,7 @@
       align-items: center;
       z-index: 1001;
     }
-    .popup-overlay.active {
-      display: flex;
-    }
+    .popup-overlay.active { display: flex; }
     .popup {
       background: var(--bg-card);
       border: 1px solid var(--border);
@@ -338,30 +255,12 @@
       animation: popupIn 0.3s ease;
     }
     @keyframes popupIn {
-      from {
-        opacity: 0;
-        transform: scale(0.8);
-      }
-      to {
-        opacity: 1;
-        transform: scale(1);
-      }
+      from { opacity: 0; transform: scale(0.8); }
+      to { opacity: 1; transform: scale(1); }
     }
-    .popup-icon {
-      font-size: 64px;
-      margin-bottom: 16px;
-    }
-    .popup-title {
-      font-size: 24px;
-      font-weight: 700;
-      margin-bottom: 8px;
-    }
-    .popup-message {
-      color: var(--text-secondary);
-      font-size: 14px;
-      margin-bottom: 24px;
-      line-height: 1.5;
-    }
+    .popup-icon { font-size: 64px; margin-bottom: 16px; }
+    .popup-title { font-size: 24px; font-weight: 700; margin-bottom: 8px; }
+    .popup-message { color: var(--text-secondary); font-size: 14px; margin-bottom: 24px; line-height: 1.5; }
     .popup-btn {
       padding: 12px 32px;
       border-radius: 8px;
@@ -371,13 +270,13 @@
       cursor: pointer;
       transition: all 0.2s;
     }
-    .popup-btn.success {
-      background: var(--accent-green);
-      color: #000;
-    }
-    .popup-btn.success:hover {
-      background: #00d68f;
-    }
+    .popup-btn.success { background: var(--accent-green); color: #000; }
+    .popup-btn.success:hover { background: #00d68f; }
+
+    #modelStatus { font-size: 12px; }
+    .model-loading { color: var(--accent-orange); }
+    .model-ready { color: var(--accent-green); }
+    .model-error { color: var(--accent-red); }
   </style>
 </head>
 <body>
@@ -390,9 +289,9 @@
     <div style="display:flex; gap:10px; align-items:center;">
       <span class="badge" style="background:var(--accent); color:#fff;" id="areaBadge">📍 Area: default</span>
       <span class="badge" id="status">Connecting...</span>
+      <span class="badge" id="modelStatus">🤖 Model: Loading...</span>
     </div>
   </header>
-
 
   <section class="grid">
     <article class="card">
@@ -408,17 +307,14 @@
       </div>
       <div class="card-body" id="inputStage">
         <div id="cameraContainer" style="display:none; position:relative; width:100%; height:100%; background:#242b33;">
-          <img id="streamVideo" alt="Stream" style="width:100%; height:100%; object-fit:contain;">
-          <div id="placeholderResult" class="no-detections" style="position:absolute; inset:0; display:none; flex-direction:column; align-items:center; justify-content:center; color:var(--text-secondary);">
-            <div style="font-size:48px; margin-bottom:12px;">🔍</div>
-            <p>Upload gambar atau aktifkan kamera<br>untuk memulai deteksi</p>
-          </div>
+          <video id="webcamVideo" autoplay playsinline style="width:100%; height:100%; object-fit:contain;"></video>
+          <canvas id="overlayCanvas" style="position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none;"></canvas>
         </div>
         <div class="upload-area" id="uploadArea">
           <div class="upload-icon">📁</div>
           <p>Drag & drop gambar di sini</p>
         </div>
-        <img id="uploadPreview" alt="Preview" style="display:none; width:100%; height:100%; object-fit:contain;">
+        <canvas id="uploadCanvas" style="display:none; width:100%; height:100%; object-fit:contain;"></canvas>
         <input type="file" id="fileInput" accept="image/*">
       </div>
       <div class="card-footer">
@@ -434,7 +330,7 @@
         </div>
       </div>
     </article>
-    <div class="message info" id="message" style="margin-top:16px;">Tekan "Aktifkan Kamera" atau upload gambar.</div>
+    <div class="message info" id="message">Tekan "Aktifkan Kamera" atau upload gambar.</div>
   </section>
 </main>
 
@@ -455,274 +351,569 @@
 </div>
 
 <script>
-window.addEventListener('DOMContentLoaded', () => {
-  const streamVideo = document.getElementById('streamVideo');
-  const cameraContainer = document.getElementById('cameraContainer');
-  const uploadPreview = document.getElementById('uploadPreview');
-  const uploadArea = document.getElementById('uploadArea');
-  const fileInput = document.getElementById('fileInput');
-  const uploadBtn = document.getElementById('uploadBtn');
-  const startCam = document.getElementById('startCam');
-  const stopCam = document.getElementById('stopCam');
-  const saveDbBtn = document.getElementById('saveDbBtn');
-  const count = document.getElementById('count');
-  const message = document.getElementById('message');
-  const detectionsPanel = document.getElementById('detectionsPanel');
-  const detectionsList = document.getElementById('detectionsList');
-  const statusBadge = document.getElementById('status');
-  const placeholderResult = document.getElementById('placeholderResult');
-  const liveIndicator = document.getElementById('liveIndicator');
-  const loadingOverlay = document.getElementById('loadingOverlay');
-  const loadingText = document.getElementById('loadingText');
-  const popupOverlay = document.getElementById('popupOverlay');
-  const popupIcon = document.getElementById('popupIcon');
-  const popupTitle = document.getElementById('popupTitle');
-  const popupMessage = document.getElementById('popupMessage');
+// ==================== ONNX Runtime Web Setup ====================
+let session = null;
+let isModelReady = false;
 
-  const API_URL = window.location.origin;
+// YOLO class names (sesuaikan dengan model kamu)
+const CLASS_NAMES = ['wire', 'branch', 'junction']; // Ganti sesuai model
 
-  // Get area from URL path
-  const pathParts = window.location.pathname.split('/').filter(Boolean);
-  const AREA = pathParts.length > 0 ? pathParts[0] : 'default';
+// Model configuration
+const MODEL_URL = '/best.onnx';
+const INPUT_SIZE = 640;
+const CONFIDENCE_THRESHOLD = 0.5;
+const IOU_THRESHOLD = 0.4;
 
-  // Set area badge
-  const areaBadge = document.getElementById('areaBadge');
-  if (areaBadge) areaBadge.textContent = '📍 Area: ' + AREA;
+async function loadONNXModel() {
+  const modelStatus = document.getElementById('modelStatus');
+  modelStatus.textContent = '🤖 Model: Loading...';
+  modelStatus.className = 'badge model-loading';
 
-  let lastDetectionCount = 0;
-  let countPolling = null;
+  try {
+    // Create ONNX Runtime session
+    ort.env.wasm.numThreads = navigator.hardwareConcurrency || 4;
 
-  async function checkHealth() {
-    try {
-      const res = await fetch(`${API_URL}/health`);
-      if (res.ok) {
-        statusBadge.textContent = '● Connected';
-        statusBadge.className = 'badge connected';
-        return;
+    session = await ort.InferenceSession.create(MODEL_URL, {
+      executionProviders: ['wasm', 'webgl', 'cpu']
+    });
+
+    isModelReady = true;
+    modelStatus.textContent = '✅ Model Ready';
+    modelStatus.className = 'badge model-ready';
+    console.log('ONNX model loaded successfully');
+  } catch (error) {
+    console.error('Failed to load ONNX model:', error);
+    modelStatus.textContent = '❌ Model Error';
+    modelStatus.className = 'badge model-error';
+  }
+}
+
+// Preprocess image for YOLO
+function preprocessImage(imgData, canvas) {
+  const ctx = canvas.getContext('2d');
+  const img = new Image();
+  img.src = imgData;
+
+  return new Promise((resolve) => {
+    img.onload = () => {
+      // Calculate scaling
+      const scale = Math.min(INPUT_SIZE / img.width, INPUT_SIZE / img.height);
+      const newWidth = img.width * scale;
+      const newHeight = img.height * scale;
+      const offsetX = (INPUT_SIZE - newWidth) / 2;
+      const offsetY = (INPUT_SIZE - newHeight) / 2;
+
+      // Set canvas size
+      canvas.width = INPUT_SIZE;
+      canvas.height = INPUT_SIZE;
+
+      // Fill with gray (letterbox)
+      ctx.fillStyle = '#808080';
+      ctx.fillRect(0, 0, INPUT_SIZE, INPUT_SIZE);
+
+      // Draw resized image
+      ctx.drawImage(img, offsetX, offsetY, newWidth, newHeight);
+
+      // Get image data and normalize
+      const imageData = ctx.getImageData(0, 0, INPUT_SIZE, INPUT_SIZE);
+      const data = imageData.data;
+
+      // Convert to float32 array (RGB format, normalized)
+      const input = new Float32Array(3 * INPUT_SIZE * INPUT_SIZE);
+      for (let i = 0; i < INPUT_SIZE * INPUT_SIZE; i++) {
+        input[i] = data[i * 4] / 255.0;           // R
+        input[i + INPUT_SIZE * INPUT_SIZE] = data[i * 4 + 1] / 255.0; // G
+        input[i + 2 * INPUT_SIZE * INPUT_SIZE] = data[i * 4 + 2] / 255.0; // B
       }
-    } catch {}
-    statusBadge.textContent = '○ Disconnected';
-    statusBadge.className = 'badge disconnected';
+
+      resolve({
+        tensor: new ort.Tensor('float32', input, [1, 3, INPUT_SIZE, INPUT_SIZE]),
+        scale: { scale, offsetX, offsetY, origWidth: img.width, origHeight: img.height }
+      });
+    };
+  });
+}
+
+// Run inference
+async function runInference(inputTensor) {
+  if (!session || !isModelReady) return null;
+
+  try {
+    const feeds = { [session.inputNames[0]]: inputTensor };
+    const results = await session.run(feeds);
+    return results[session.outputNames[0]];
+  } catch (error) {
+    console.error('Inference error:', error);
+    return null;
   }
-  checkHealth();
-  setInterval(checkHealth, 10000);
+}
 
-  function setMessage(text, type = 'info') {
-    message.textContent = text;
-    message.className = 'message ' + type;
+// Post-process YOLO output
+function postprocessYOLO(output, scale, imgWidth, imgHeight) {
+  const detections = [];
+
+  // Output shape: [1, num_predictions, 85] for YOLOv8 (4 box + 80 classes)
+  // Adjust based on your model output
+  const outputData = output.data;
+  const numPredictions = output.dims[1];
+  const numClasses = output.dims[2] - 5; // Subtract 4 bbox + 1 obj
+
+  for (let i = 0; i < numPredictions; i++) {
+    const baseIndex = i * numClasses + 5;
+
+    // Get objectness score
+    const objScore = outputData[baseIndex - 1];
+    if (objScore < CONFIDENCE_THRESHOLD) continue;
+
+    // Get class scores and find max
+    let maxScore = 0;
+    let maxClass = 0;
+    for (let c = 0; c < numClasses; c++) {
+      const score = outputData[baseIndex + c];
+      if (score > maxScore) {
+        maxScore = score;
+        maxClass = c;
+      }
+    }
+
+    const confidence = objScore * maxScore;
+    if (confidence < CONFIDENCE_THRESHOLD) continue;
+
+    // Get bbox coordinates (center x, center y, width, height)
+    const cx = outputData[baseIndex - 5];
+    const cy = outputData[baseIndex - 4];
+    const w = outputData[baseIndex - 3];
+    const h = outputData[baseIndex - 2];
+
+    // Convert to original image coordinates
+    const x1 = Math.max(0, (cx - w / 2 - scale.offsetX) / scale.scale);
+    const y1 = Math.max(0, (cy - h / 2 - scale.offsetY) / scale.scale);
+    const x2 = Math.min(imgWidth, (cx + w / 2 - scale.offsetX) / scale.scale);
+    const y2 = Math.min(imgHeight, (cy + h / 2 - scale.offsetY) / scale.scale);
+
+    detections.push({
+      class: maxClass,
+      label: CLASS_NAMES[maxClass] || `Class ${maxClass}`,
+      confidence: confidence,
+      bbox: [x1, y1, x2, y2]
+    });
   }
 
-  function showLoading(text = 'Memproses...') {
-    loadingText.textContent = text;
-    loadingOverlay.classList.add('active');
+  // Apply NMS
+  return applyNMS(detections, IOU_THRESHOLD);
+}
+
+function applyNMS(detections, iouThreshold) {
+  if (detections.length === 0) return [];
+
+  // Sort by confidence
+  detections.sort((a, b) => b.confidence - a.confidence);
+
+  const keep = [];
+  const used = new Set();
+
+  for (let i = 0; i < detections.length; i++) {
+    if (used.has(i)) continue;
+
+    keep.push(detections[i]);
+    used.add(i);
+
+    for (let j = i + 1; j < detections.length; j++) {
+      if (used.has(j)) continue;
+      if (detections[j].class !== detections[i].class) continue;
+
+      const iou = calculateIOU(detections[i].bbox, detections[j].bbox);
+      if (iou > iouThreshold) {
+        used.add(j);
+      }
+    }
   }
 
-  function hideLoading() {
-    loadingOverlay.classList.remove('active');
-  }
+  return keep;
+}
 
-  window.closePopup = function() {
-    popupOverlay.classList.remove('active');
-  };
+function calculateIOU(box1, box2) {
+  const [x1, y1, x2, y2] = box1;
+  const [x3, y3, x4, y4] = box2;
 
-  function showPopup(icon, title, msg) {
-    popupIcon.textContent = icon;
-    popupTitle.textContent = title;
-    popupMessage.textContent = msg;
-    popupOverlay.classList.add('active');
-  }
+  const interX1 = Math.max(x1, x3);
+  const interY1 = Math.max(y1, y3);
+  const interX2 = Math.min(x2, x4);
+  const interY2 = Math.min(y2, y4);
 
-  popupOverlay.onclick = (e) => {
-    if (e.target === popupOverlay) closePopup();
-  };
+  const interArea = Math.max(0, interX2 - interX1) * Math.max(0, interY2 - interY1);
+  const box1Area = (x2 - x1) * (y2 - y1);
+  const box2Area = (x4 - x3) * (y4 - y3);
 
-  // Start camera - show video stream
-  startCam.onclick = async () => {
-    if (cameraContainer) cameraContainer.style.display = 'block';
-    if (streamVideo) streamVideo.src = `${API_URL}/video_feed`;
-    if (streamVideo) streamVideo.style.display = 'block';
-    if (uploadArea) uploadArea.style.display = 'none';
-    if (uploadPreview) uploadPreview.style.display = 'none';
-    if (placeholderResult) placeholderResult.style.display = 'none';
-    if (startCam) startCam.disabled = true;
-    if (stopCam) stopCam.disabled = false;
-    if (liveIndicator) liveIndicator.style.display = 'inline';
+  return interArea / (box1Area + box2Area - interArea);
+}
 
-    setMessage('📹 Kamera aktif. Streaming...', 'info');
+// Draw detections on canvas
+function drawDetections(canvas, detections, scale) {
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Show loading while polling for count
-    showLoading('🔍 Mendeteksi...');
-    count.textContent = '...';
+  canvas.width = canvas.parentElement.clientWidth;
+  canvas.height = canvas.parentElement.clientHeight;
 
-    // Poll for detection count
-    countPolling = setInterval(async () => {
+  const displayScale = Math.min(canvas.width / scale.origWidth, canvas.height / scale.origHeight);
+
+  detections.forEach((det, i) => {
+    const [x1, y1, x2, y2] = det.bbox;
+
+    // Scale to display size
+    const dx1 = x1 * displayScale;
+    const dy1 = y1 * displayScale;
+    const dx2 = x2 * displayScale;
+    const dy2 = y2 * displayScale;
+
+    // Draw box
+    ctx.strokeStyle = '#00ba7c';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(dx1, dy1, dx2 - dx1, dy2 - dy1);
+
+    // Draw label
+    const label = `${det.label} ${(det.confidence * 100).toFixed(1)}%`;
+    ctx.fillStyle = '#00ba7c';
+    ctx.font = 'bold 14px sans-serif';
+    const textWidth = ctx.measureText(label).width;
+
+    ctx.fillRect(dx1, dy1 - 20, textWidth + 10, 20);
+    ctx.fillStyle = '#000';
+    ctx.fillText(label, dx1 + 5, dy1 - 5);
+  });
+}
+
+// ==================== App Logic ====================
+let webcamStream = null;
+let detectionLoop = null;
+let lastDetectionCount = 0;
+
+const webcamVideo = document.getElementById('webcamVideo');
+const cameraContainer = document.getElementById('cameraContainer');
+const uploadArea = document.getElementById('uploadArea');
+const uploadCanvas = document.getElementById('uploadCanvas');
+const overlayCanvas = document.getElementById('overlayCanvas');
+const fileInput = document.getElementById('fileInput');
+const uploadBtn = document.getElementById('uploadBtn');
+const startCam = document.getElementById('startCam');
+const stopCam = document.getElementById('stopCam');
+const saveDbBtn = document.getElementById('saveDbBtn');
+const count = document.getElementById('count');
+const message = document.getElementById('message');
+const detectionsPanel = document.getElementById('detectionsPanel');
+const detectionsList = document.getElementById('detectionsList');
+const statusBadge = document.getElementById('status');
+const liveIndicator = document.getElementById('liveIndicator');
+const loadingOverlay = document.getElementById('loadingOverlay');
+const loadingText = document.getElementById('loadingText');
+const popupOverlay = document.getElementById('popupOverlay');
+const popupIcon = document.getElementById('popupIcon');
+const popupTitle = document.getElementById('popupTitle');
+const popupMessage = document.getElementById('popupMessage');
+
+const API_URL = window.location.origin;
+
+// Get area from URL
+const pathParts = window.location.pathname.split('/').filter(Boolean);
+const AREA = pathParts.length > 0 ? pathParts[0] : 'default';
+document.getElementById('areaBadge').textContent = '📍 Area: ' + AREA;
+
+function setMessage(text, type = 'info') {
+  message.textContent = text;
+  message.className = 'message ' + type;
+}
+
+function showLoading(text = 'Memproses...') {
+  loadingText.textContent = text;
+  loadingOverlay.classList.add('active');
+}
+
+function hideLoading() {
+  loadingOverlay.classList.remove('active');
+}
+
+window.closePopup = function() {
+  popupOverlay.classList.remove('active');
+};
+
+function showPopup(icon, title, msg) {
+  popupIcon.textContent = icon;
+  popupTitle.textContent = title;
+  popupMessage.textContent = msg;
+  popupOverlay.classList.add('active');
+}
+
+popupOverlay.onclick = (e) => {
+  if (e.target === popupOverlay) closePopup();
+};
+
+// Health check
+async function checkHealth() {
+  try {
+    const res = await fetch(`${API_URL}/health`);
+    if (res.ok) {
+      statusBadge.textContent = '● Connected';
+      statusBadge.className = 'badge connected';
+      return;
+    }
+  } catch {}
+  statusBadge.textContent = '○ Disconnected';
+  statusBadge.className = 'badge disconnected';
+}
+checkHealth();
+setInterval(checkHealth, 10000);
+
+// Start webcam
+startCam.onclick = async () => {
+  try {
+    webcamStream = await navigator.mediaDevices.getUserMedia({
+      video: { width: 640, height: 480 }
+    });
+    webcamVideo.srcObject = webcamStream;
+
+    cameraContainer.style.display = 'block';
+    uploadArea.style.display = 'none';
+    uploadCanvas.style.display = 'none';
+
+    startCam.disabled = true;
+    stopCam.disabled = false;
+    liveIndicator.style.display = 'inline';
+
+    setMessage('📹 Kamera aktif. Mendeteksi...', 'info');
+    showLoading('🔍 Memuat model...');
+
+    // Wait for model to load
+    if (!isModelReady) {
+      await new Promise(resolve => {
+        const checkModel = setInterval(() => {
+          if (isModelReady) {
+            clearInterval(checkModel);
+            resolve();
+          }
+        }, 100);
+      });
+    }
+    hideLoading();
+
+    // Start detection loop
+    async function detectFrame() {
+      if (!webcamStream) return;
+
       try {
-        // Capture current frame and send for detection
-        const canvas = document.createElement('canvas');
-        canvas.width = 320;
-        canvas.height = 240;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(streamVideo, 0, 0, canvas.width, canvas.height);
-        const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.5));
-        const formData = new FormData();
-        formData.append('file', blob, 'frame.jpg');
+        // Create temp canvas for capture
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = webcamVideo.videoWidth;
+        tempCanvas.height = webcamVideo.videoHeight;
+        const tempCtx = tempCanvas.getContext('2d');
+        tempCtx.drawImage(webcamVideo, 0, 0);
 
-        const res = await fetch(`${API_URL}/api/detect`, { method: 'POST', body: formData });
-        const data = await res.json();
+        // Preprocess
+        const tempCanvas2 = document.createElement('canvas');
+        const { tensor, scale } = await preprocessImage(tempCanvas.toDataURL(), tempCanvas2);
 
-        if (data.count !== undefined) {
-          count.textContent = data.count;
-          lastDetectionCount = data.count;
+        // Run inference
+        const output = await runInference(tensor);
 
-          if (data.count > 0) {
-            renderDetections(data.detections);
-            if (saveDbBtn) saveDbBtn.disabled = false;
-            setMessage(`✅ ${data.count} objek terdeteksi`, 'success');
-            hideLoading();
+        if (output) {
+          const detections = postprocessYOLO(output, scale, webcamVideo.videoWidth, webcamVideo.videoHeight);
+
+          // Update count
+          count.textContent = detections.length;
+          lastDetectionCount = detections.length;
+
+          // Draw on overlay
+          drawDetections(overlayCanvas, detections, scale);
+
+          // Render detection list
+          if (detections.length > 0) {
+            renderDetections(detections);
+            saveDbBtn.disabled = false;
+            setMessage(`✅ ${detections.length} objek terdeteksi`, 'success');
+          } else {
+            detectionsPanel.style.display = 'none';
+            setMessage('📹 Mendeteksi...', 'info');
           }
         }
       } catch (e) {
-        console.error('Polling error:', e);
+        console.error('Detection error:', e);
       }
-    }, 1000); // Poll every 1 second
-  };
 
-  // Stop camera
-  stopCam.onclick = () => {
-    if (countPolling) clearInterval(countPolling);
-    if (streamVideo) {
-      streamVideo.src = '';
-      streamVideo.style.display = 'none';
-    }
-    if (cameraContainer) cameraContainer.style.display = 'none';
-    if (uploadArea) uploadArea.style.display = 'block';
-    if (startCam) startCam.disabled = false;
-    if (stopCam) stopCam.disabled = true;
-    if (liveIndicator) liveIndicator.style.display = 'none';
-    setMessage(`⏹ Kamera berhenti. Total: ${lastDetectionCount} objek.`, 'info');
-  };
-
-  function renderDetections(detections) {
-    if (!detections || detections.length === 0) {
-      detectionsPanel.style.display = 'none';
-      return;
+      detectionLoop = requestAnimationFrame(detectFrame);
     }
 
-    detectionsList.innerHTML = detections.map((d, i) => `
-      <div class="detection-item">
-        <div class="detection-num">${i + 1}</div>
-        <div class="detection-info">
-          <div class="detection-label">${d.label}</div>
-          <div class="detection-meta">Confidence: ${(d.confidence * 100).toFixed(1)}%</div>
-        </div>
-      </div>
-    `).join('');
+    detectFrame();
 
-    detectionsPanel.style.display = 'block';
+  } catch (error) {
+    console.error('Camera error:', error);
+    setMessage('❌ Gagal mengakses kamera: ' + error.message, 'error');
+  }
+};
+
+// Stop webcam
+stopCam.onclick = () => {
+  if (detectionLoop) {
+    cancelAnimationFrame(detectionLoop);
+    detectionLoop = null;
   }
 
-  // Upload handlers
-  uploadBtn.onclick = () => fileInput.click();
+  if (webcamStream) {
+    webcamStream.getTracks().forEach(track => track.stop());
+    webcamStream = null;
+  }
 
-  fileInput.onchange = (e) => {
-    const file = e.target.files[0];
-    if (file) processFile(file);
-  };
+  webcamVideo.srcObject = null;
+  cameraContainer.style.display = 'none';
+  uploadArea.style.display = 'block';
+  overlayCanvas.getContext('2d').clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
 
-  uploadArea.ondragover = (e) => {
-    e.preventDefault();
-    uploadArea.style.background = 'rgba(0, 186, 124, 0.1)';
-  };
-  uploadArea.ondragleave = () => { uploadArea.style.background = ''; };
-  uploadArea.ondrop = (e) => {
-    e.preventDefault();
-    uploadArea.style.background = '';
-    const file = e.dataTransfer.files[0];
-    if (file && file.type.startsWith('image/')) processFile(file);
-  };
+  startCam.disabled = false;
+  stopCam.disabled = true;
+  liveIndicator.style.display = 'none';
 
-  async function processFile(file) {
-    showLoading('🔍 Menganalisis gambar...');
-    setMessage('⏳ Menganalisis...', 'info');
+  setMessage(`⏹ Kamera berhenti. Total: ${lastDetectionCount} objek.`, 'info');
+};
 
-    const formData = new FormData();
-    formData.append('file', file);
+function renderDetections(detections) {
+  if (!detections || detections.length === 0) {
+    detectionsPanel.style.display = 'none';
+    return;
+  }
 
-    try {
-      const response = await fetch(`${API_URL}/api/detect`, { method: 'POST', body: formData });
-      const data = await response.json();
+  detectionsList.innerHTML = detections.map((d, i) => `
+    <div class="detection-item">
+      <div class="detection-num">${i + 1}</div>
+      <div class="detection-info">
+        <div class="detection-label">${d.label}</div>
+        <div class="detection-meta">Confidence: ${(d.confidence * 100).toFixed(1)}%</div>
+      </div>
+    </div>
+  `).join('');
 
-      if (data.annotated_image && uploadPreview) {
-        uploadPreview.src = `data:image/jpeg;base64,${data.annotated_image}`;
-        uploadPreview.style.display = 'block';
-      }
+  detectionsPanel.style.display = 'block';
+}
 
-      count.textContent = data.count || 0;
-      lastDetectionCount = data.count || 0;
+// Upload handlers
+uploadBtn.onclick = () => fileInput.click();
 
-      if (lastDetectionCount > 0) {
-        renderDetections(data.detections);
-        if (saveDbBtn) saveDbBtn.disabled = false;
-        setMessage(`✅ Deteksi berhasil! ${lastDetectionCount} objek ditemukan.`, 'success');
+fileInput.onchange = async (e) => {
+  const file = e.target.files[0];
+  if (file) await processFile(file);
+};
+
+uploadArea.ondragover = (e) => {
+  e.preventDefault();
+  uploadArea.style.background = 'rgba(0, 186, 124, 0.1)';
+};
+uploadArea.ondragleave = () => { uploadArea.style.background = ''; };
+uploadArea.ondrop = async (e) => {
+  e.preventDefault();
+  uploadArea.style.background = '';
+  const file = e.dataTransfer.files[0];
+  if (file && file.type.startsWith('image/')) await processFile(file);
+};
+
+async function processFile(file) {
+  showLoading('🔍 Menganalisis gambar...');
+  setMessage('⏳ Menganalisis...', 'info');
+
+  try {
+    // Load image
+    const img = new Image();
+    img.src = URL.createObjectURL(file);
+
+    await new Promise((resolve) => { img.onload = resolve; });
+
+    // Display on canvas
+    uploadCanvas.width = img.width;
+    uploadCanvas.height = img.height;
+    const ctx = uploadCanvas.getContext('2d');
+    ctx.drawImage(img, 0, 0);
+    uploadCanvas.style.display = 'block';
+    uploadArea.style.display = 'none';
+    cameraContainer.style.display = 'none';
+
+    // Preprocess
+    const preprocessCanvas = document.createElement('canvas');
+    const { tensor, scale } = await preprocessImage(uploadCanvas.toDataURL(), preprocessCanvas);
+
+    // Run inference
+    const output = await runInference(tensor);
+
+    if (output) {
+      const detections = postprocessYOLO(output, scale, img.width, img.height);
+
+      // Draw detections
+      drawDetections(uploadCanvas, detections, { origWidth: img.width, origHeight: img.height });
+
+      // Update count
+      count.textContent = detections.length;
+      lastDetectionCount = detections.length;
+
+      if (detections.length > 0) {
+        renderDetections(detections);
+        saveDbBtn.disabled = false;
+        setMessage(`✅ Deteksi berhasil! ${detections.length} objek ditemukan.`, 'success');
       } else {
         setMessage('⚠️ Tidak ada objek terdeteksi.', 'warning');
       }
-    } catch (error) {
-      setMessage('❌ Error: ' + error.message, 'error');
-    } finally {
-      hideLoading();
+    } else {
+      setMessage('⚠️ Model belum siap atau error.', 'warning');
     }
+  } catch (error) {
+    console.error('Process error:', error);
+    setMessage('❌ Error: ' + error.message, 'error');
+  } finally {
+    hideLoading();
+  }
+}
+
+// Save to DB
+document.getElementById('saveDbBtn').onclick = async () => {
+  if (lastDetectionCount === 0) {
+    setMessage('⚠️ Tidak ada data untuk disimpan.', 'warning');
+    return;
   }
 
-  // Save to DB
-  document.getElementById('saveDbBtn').onclick = async () => {
-    if (lastDetectionCount === 0) {
-      setMessage('⚠️ Tidak ada data untuk disimpan.', 'warning');
-      return;
-    }
+  showLoading('💾 Menyimpan ke database...');
+  setMessage('⏳ Menyimpan...', 'info');
+  saveDbBtn.disabled = true;
 
-    showLoading('💾 Menyimpan ke database...');
-    setMessage('⏳ Menyimpan...', 'info');
-    saveDbBtn.disabled = true;
+  const now = new Date();
+  const jakartaOffset = 7 * 60;
+  const jakartaTime = new Date(now.getTime() + (now.getTimezoneOffset() + jakartaOffset) * 60000);
+  const dt_ins = jakartaTime.toISOString().split('T')[0];
+  const seq_time = jakartaTime.toISOString().replace('T', ' ').split('.')[0];
 
-    const now = new Date();
-    const jakartaOffset = 7 * 60;
-    const jakartaTime = new Date(now.getTime() + (now.getTimezoneOffset() + jakartaOffset) * 60000);
-    const dt_ins = jakartaTime.toISOString().split('T')[0];
-    const seq_time = jakartaTime.toISOString().replace('T', ' ').split('.')[0];
+  try {
+    const response = await fetch(`${API_URL}/api/save-detection`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ countc: lastDetectionCount, dt_ins, seq_time, area: AREA })
+    });
 
-    try {
-      const response = await fetch(`${API_URL}/api/save-detection`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ countc: lastDetectionCount, dt_ins, seq_time, area: AREA })
-      });
+    const result = await response.json();
 
-      const result = await response.json();
-
-      if (response.ok) {
-        hideLoading();
-        setMessage(`✅ Tersimpan! ID: ${result.id}`, 'success');
-        showPopup('✅', 'Berhasil!', `ID: ${result.id}\nJumlah: ${result.count}\nArea: ${AREA}\nWaktu: ${seq_time}`);
-      } else {
-        hideLoading();
-        setMessage('❌ Gagal menyimpan.', 'error');
-        showPopup('❌', 'Gagal!', result.detail || 'Error tidak diketahui');
-      }
-    } catch (error) {
+    if (response.ok) {
       hideLoading();
-      setMessage('❌ Error: ' + error.message, 'error');
-      showPopup('❌', 'Gagal!', 'Tidak dapat terhubung ke server.');
-    } finally {
-      saveDbBtn.disabled = false;
+      setMessage(`✅ Tersimpan! ID: ${result.id}`, 'success');
+      showPopup('✅', 'Berhasil!', `ID: ${result.id}\nJumlah: ${result.count}\nArea: ${AREA}\nWaktu: ${seq_time}`);
+    } else {
+      hideLoading();
+      setMessage('❌ Gagal menyimpan.', 'error');
+      showPopup('❌', 'Gagal!', result.detail || 'Error tidak diketahui');
     }
-  };
+  } catch (error) {
+    hideLoading();
+    setMessage('❌ Error: ' + error.message, 'error');
+    showPopup('❌', 'Gagal!', 'Tidak dapat terhubung ke server.');
+  } finally {
+    saveDbBtn.disabled = false;
+  }
+};
 
-  // Initial state
-  if (streamVideo) streamVideo.style.display = 'none';
-});
+// Load ONNX model on start
+loadONNXModel();
 </script>
-
-
 </body>
 </html>
