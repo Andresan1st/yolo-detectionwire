@@ -314,7 +314,10 @@
           <div class="upload-icon">📁</div>
           <p>Drag & drop gambar di sini</p>
         </div>
-        <canvas id="uploadCanvas" style="display:none; width:100%; height:100%; object-fit:contain;"></canvas>
+        <div id="uploadContainer" style="display:none; position:relative; width:100%; height:100%;">
+          <canvas id="uploadCanvas" style="width:100%; height:100%; object-fit:contain;"></canvas>
+          <canvas id="uploadOverlay" style="position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none;"></canvas>
+        </div>
         <input type="file" id="fileInput" accept="image/*">
       </div>
       <div class="card-footer">
@@ -562,19 +565,18 @@ function drawDetections(canvas, detections, scale) {
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  canvas.width = canvas.parentElement.clientWidth;
-  canvas.height = canvas.parentElement.clientHeight;
-
   const displayScale = Math.min(canvas.width / scale.origWidth, canvas.height / scale.origHeight);
+  const offsetX = (canvas.width - scale.origWidth * displayScale) / 2;
+  const offsetY = (canvas.height - scale.origHeight * displayScale) / 2;
 
   detections.forEach((det, i) => {
     const [x1, y1, x2, y2] = det.bbox;
 
     // Scale to display size
-    const dx1 = x1 * displayScale;
-    const dy1 = y1 * displayScale;
-    const dx2 = x2 * displayScale;
-    const dy2 = y2 * displayScale;
+    const dx1 = x1 * displayScale + offsetX;
+    const dy1 = y1 * displayScale + offsetY;
+    const dx2 = x2 * displayScale + offsetX;
+    const dy2 = y2 * displayScale + offsetY;
 
     // Draw box
     ctx.strokeStyle = '#00ba7c';
@@ -603,6 +605,8 @@ const cameraContainer = document.getElementById('cameraContainer');
 const uploadArea = document.getElementById('uploadArea');
 const uploadCanvas = document.getElementById('uploadCanvas');
 const overlayCanvas = document.getElementById('overlayCanvas');
+const uploadOverlay = document.getElementById('uploadOverlay');
+const uploadContainer = document.getElementById('uploadContainer');
 const fileInput = document.getElementById('fileInput');
 const uploadBtn = document.getElementById('uploadBtn');
 const startCam = document.getElementById('startCam');
@@ -683,7 +687,7 @@ startCam.onclick = async () => {
 
     cameraContainer.style.display = 'block';
     uploadArea.style.display = 'none';
-    uploadCanvas.style.display = 'none';
+    uploadContainer.style.display = 'none';
 
     startCam.disabled = true;
     stopCam.disabled = false;
@@ -787,6 +791,7 @@ stopCam.onclick = () => {
 
   webcamVideo.srcObject = null;
   cameraContainer.style.display = 'none';
+  uploadContainer.style.display = 'none';
   uploadArea.style.display = 'block';
   overlayCanvas.getContext('2d').clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
 
@@ -875,9 +880,14 @@ async function processFile(file) {
     uploadCanvas.height = img.height;
     const ctx = uploadCanvas.getContext('2d');
     ctx.drawImage(img, 0, 0);
-    uploadCanvas.style.display = 'block';
+    uploadContainer.style.display = 'block';
     uploadArea.style.display = 'none';
     cameraContainer.style.display = 'none';
+
+    // Show overlay for detections
+    uploadOverlay.width = img.width;
+    uploadOverlay.height = img.height;
+    uploadOverlay.style.display = 'block';
 
     // Preprocess
     const preprocessCanvas = document.createElement('canvas');
@@ -889,8 +899,10 @@ async function processFile(file) {
     if (output) {
       const detections = postprocessYOLO(output, scale, img.width, img.height);
 
-      // Draw detections
-      drawDetections(uploadCanvas, detections, { origWidth: img.width, origHeight: img.height });
+      console.log('Detections:', detections);
+
+      // Draw detections on overlay
+      drawDetections(uploadOverlay, detections, { origWidth: img.width, origHeight: img.height });
 
       // Update count
       count.textContent = detections.length;
