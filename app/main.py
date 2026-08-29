@@ -85,7 +85,7 @@ def detect_in_image(frame):
             coordinates = box.xyxy[0].cpu().numpy().astype(int).tolist()
             class_id = int(box.cls[0].item())
             confidence = float(box.conf[0].item())
-            label = str(names.get(class_id, class_id))
+            label = str(names.get(class_id, "unknown"))
 
             x1, y1, x2, y2 = coordinates
 
