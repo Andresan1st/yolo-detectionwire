@@ -408,12 +408,7 @@
       </div>
       <div class="card-body" id="inputStage">
         <div id="cameraContainer" style="display:none; position:relative; width:100%; height:100%; background:#242b33;">
-          <video id="cameraVideo" autoplay muted playsinline style="width:100%; height:100%; object-fit:contain;"></video>
-          <canvas id="overlay" style="position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none;"></canvas>
-          <div id="streamPlaceholder" style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; color:var(--text-secondary);">
-            <div style="font-size:48px; margin-bottom:12px;">📹</div>
-            <p>Menyambungkan kamera...</p>
-          </div>
+          <img id="streamVideo" alt="Stream" style="width:100%; height:100%; object-fit:contain;">
           <div id="placeholderResult" class="no-detections" style="position:absolute; inset:0; display:none; flex-direction:column; align-items:center; justify-content:center; color:var(--text-secondary);">
             <div style="font-size:48px; margin-bottom:12px;">🔍</div>
             <p>Upload gambar atau aktifkan kamera<br>untuk memulai deteksi</p>
@@ -461,9 +456,7 @@
 
 <script>
 window.addEventListener('DOMContentLoaded', () => {
-  const cameraVideo = document.getElementById('cameraVideo');
-  const overlay = document.getElementById('overlay');
-  const streamPlaceholder = document.getElementById('streamPlaceholder');
+  const streamVideo = document.getElementById('streamVideo');
   const cameraContainer = document.getElementById('cameraContainer');
   const uploadPreview = document.getElementById('uploadPreview');
   const uploadArea = document.getElementById('uploadArea');
@@ -487,38 +480,8 @@ window.addEventListener('DOMContentLoaded', () => {
   const popupMessage = document.getElementById('popupMessage');
 
   const API_URL = window.location.origin;
-  const WS_URL = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws/detect`;
 
-  // Loading functions
-  function showLoading(text = 'Memproses gambar...') {
-    loadingText.textContent = text;
-    loadingOverlay.classList.add('active');
-  }
-
-  function hideLoading() {
-    loadingOverlay.classList.remove('active');
-  }
-
-  // Popup functions
-  window.closePopup = function() {
-    popupOverlay.classList.remove('active');
-  };
-
-  function showPopup(icon, title, msg) {
-    popupIcon.textContent = icon;
-    popupTitle.textContent = title;
-    popupMessage.textContent = msg;
-    popupOverlay.classList.add('active');
-  }
-
-  // Close popup on overlay click
-  popupOverlay.onclick = (e) => {
-    if (e.target === popupOverlay) {
-      closePopup();
-    }
-  };
-
-  // Get area from URL path (e.g., /labqc, /produksi)
+  // Get area from URL path
   const pathParts = window.location.pathname.split('/').filter(Boolean);
   const AREA = pathParts.length > 0 ? pathParts[0] : 'default';
 
@@ -526,11 +489,8 @@ window.addEventListener('DOMContentLoaded', () => {
   const areaBadge = document.getElementById('areaBadge');
   if (areaBadge) areaBadge.textContent = '📍 Area: ' + AREA;
 
-  let stream, timer, busy = false, ws;
   let lastDetectionCount = 0;
-  let isCameraActive = false;
-  let lastDetections = [];
-  let boxTimeout = null;
+  let countPolling = null;
 
   async function checkHealth() {
     try {
@@ -547,320 +507,94 @@ window.addEventListener('DOMContentLoaded', () => {
   checkHealth();
   setInterval(checkHealth, 10000);
 
-  function getConfidenceClass(conf) {
-    if (conf >= 0.7) return 'high';
-    if (conf >= 0.4) return 'medium';
-    return 'low';
-  }
-
   function setMessage(text, type = 'info') {
     message.textContent = text;
     message.className = 'message ' + type;
   }
 
-  function clearOverlay() {
-    if (!overlay) return;
-    const ctx = overlay.getContext('2d');
-    if (!ctx) return;
-    ctx.clearRect(0, 0, overlay.width, overlay.height);
+  function showLoading(text = 'Memproses...') {
+    loadingText.textContent = text;
+    loadingOverlay.classList.add('active');
   }
 
-  function updateOverlaySize() {
-    if (!overlay || !cameraVideo) return;
-    overlay.width = cameraVideo.videoWidth || 640;
-    overlay.height = cameraVideo.videoHeight || 480;
+  function hideLoading() {
+    loadingOverlay.classList.remove('active');
   }
 
-  function drawOverlay(detections, imageWidth, imageHeight) {
-    if (!cameraVideo || !overlay) return;
-
-    const ctx = overlay.getContext('2d');
-    if (!ctx) return;
-
-    // Get video actual dimensions
-    const videoWidth = cameraVideo.videoWidth || 640;
-    const videoHeight = cameraVideo.videoHeight || 480;
-
-    // Set overlay size to match video
-    overlay.width = videoWidth;
-    overlay.height = videoHeight;
-
-    // Calculate scale factors
-    const scaleX = videoWidth / (imageWidth || videoWidth);
-    const scaleY = videoHeight / (imageHeight || videoHeight);
-
-    // Clear canvas
-    ctx.clearRect(0, 0, overlay.width, overlay.height);
-
-    detections.forEach((d) => {
-      // Scale bounding box
-      const x1 = d.bbox.x1 * scaleX;
-      const y1 = d.bbox.y1 * scaleY;
-      const x2 = d.bbox.x2 * scaleX;
-      const y2 = d.bbox.y2 * scaleY;
-      const w = x2 - x1;
-      const h = y2 - y1;
-
-      // Draw box
-      ctx.strokeStyle = '#00e676';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(x1, y1, w, h);
-
-      // Draw label background
-      const label = `${d.label} ${Math.round(d.confidence * 100)}%`;
-      ctx.font = 'bold 14px Arial';
-      const textWidth = ctx.measureText(label).width;
-      const labelPadding = 4;
-      const labelHeight = 18;
-
-      ctx.fillStyle = '#00e676';
-      ctx.fillRect(x1, Math.max(0, y1 - labelHeight - labelPadding), textWidth + labelPadding * 2, labelHeight);
-
-      // Draw label text
-      ctx.fillStyle = '#000000';
-      ctx.fillText(label, x1 + labelPadding, Math.max(14, y1 - labelPadding));
-    });
-  }
-
-  function renderDetections(detections) {
-    if (!detections || detections.length === 0) {
-      detectionsPanel.style.display = 'none';
-      return;
-    }
-
-    detectionsList.innerHTML = detections.map((d, i) => {
-      const conf = d.confidence * 100;
-      const confClass = getConfidenceClass(d.confidence);
-      return `
-        <div class="detection-item">
-          <div class="detection-num">${i + 1}</div>
-          <div class="detection-info">
-            <div class="detection-label">${d.label}</div>
-            <div class="detection-meta">Confidence: ${conf.toFixed(1)}%</div>
-          </div>
-          <div class="confidence-bar">
-            <div class="confidence-fill ${confClass}" style="width: ${conf}%"></div>
-          </div>
-        </div>
-      `;
-    }).join('');
-
-    detectionsPanel.style.display = 'block';
-  }
-
-  function handleDetectionResult(data) {
-    busy = false;
-    if (!data.success) {
-      setMessage('❌ ' + (data.error || 'Deteksi gagal'), 'error');
-      return;
-    }
-
-    const currentDetections = data.detections || [];
-    const totalCount = data.count || currentDetections.length;
-    const imageWidth = data.image_width || 640;
-    const imageHeight = data.image_height || 480;
-
-    // Store current detections
-    lastDetections = currentDetections;
-    lastDetectionCount = totalCount;
-
-    // Update count
-    count.textContent = totalCount;
-
-    // Hide placeholder when streaming
-    if (streamPlaceholder) streamPlaceholder.style.display = 'none';
-
-    // Show/hide placeholder
-    if (placeholderResult) {
-      placeholderResult.style.display = totalCount > 0 ? 'none' : 'flex';
-    }
-
-    // Draw bounding boxes on overlay
-    updateOverlaySize();
-    drawOverlay(currentDetections, imageWidth, imageHeight);
-
-    renderDetections(currentDetections);
-
-    // Clear previous timeout
-    if (boxTimeout) {
-      clearTimeout(boxTimeout);
-    }
-
-    // Set 10 second timeout to clear
-    if (totalCount > 0) {
-      setMessage(`✅ ${totalCount} objek terdeteksi`, 'success');
-      if (saveDbBtn) saveDbBtn.disabled = false;
-
-      boxTimeout = setTimeout(() => {
-        clearOverlay();
-        renderDetections([]);
-        count.textContent = '0';
-        if (placeholderResult) placeholderResult.style.display = 'flex';
-        setMessage('📹 Mendeteksi...', 'info');
-      }, 10000);
-    } else {
-      setMessage('📹 Mendeteksi...', 'info');
-    }
-  }
-
-  function createWebSocket() {
-    if (ws && ws.readyState === WebSocket.OPEN) return;
-    ws = new WebSocket(WS_URL);
-    ws.binaryType = 'arraybuffer';
-
-    ws.onopen = () => {
-      statusBadge.textContent = '● Connected';
-      statusBadge.className = 'badge connected';
-      setMessage('🔌 Koneksi siap. Mendeteksi...', 'info');
-    };
-
-    ws.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        handleDetectionResult(data);
-      } catch (error) {
-        setMessage('❌ Response error: ' + error.message, 'error');
-      }
-    };
-
-    ws.onclose = () => {
-      statusBadge.textContent = '○ Disconnected';
-      statusBadge.className = 'badge disconnected';
-    };
-
-    ws.onerror = () => {
-      statusBadge.textContent = '○ Disconnected';
-      statusBadge.className = 'badge disconnected';
-    };
-  }
-
-  function sendFrame() {
-    if (!ws || ws.readyState !== WebSocket.OPEN || busy) return;
-    if (!stream || stream.active === false) return;
-    if (!cameraVideo || cameraVideo.readyState < 2) return;
-
-    try {
-      const canvas = document.createElement('canvas');
-      canvas.width = cameraVideo.videoWidth;
-      canvas.height = cameraVideo.videoHeight;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(cameraVideo, 0, 0, canvas.width, canvas.height);
-
-      canvas.toBlob((blob) => {
-        if (!blob) return;
-        busy = true;
-        ws.send(blob);
-      }, 'image/jpeg', 0.7);
-    } catch (error) {
-      console.error('Error sending frame:', error);
-    }
-  }
-
-  // Upload handlers
-  async function sendImage(imageSource) {
-    if (busy) return;
-    busy = true;
-    showLoading('🔍 Menganalisis gambar...');
-    setMessage('⏳ Menganalisis...', 'info');
-
-    try {
-      const sourceWidth = imageSource.videoWidth || imageSource.naturalWidth || imageSource.width || 640;
-      const sourceHeight = imageSource.videoHeight || imageSource.naturalHeight || imageSource.height || 480;
-      const canvas = document.createElement('canvas');
-      canvas.width = sourceWidth;
-      canvas.height = sourceHeight;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(imageSource, 0, 0, canvas.width, canvas.height);
-
-      const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.85));
-      if (!blob) throw new Error('Gambar tidak dapat diproses.');
-
-      const formData = new FormData();
-      formData.append('file', blob, 'image.jpg');
-
-      const response = await fetch(`${API_URL}/api/detect`, { method: 'POST', body: formData });
-      const data = await response.json();
-
-      if (!response.ok) throw new Error(data.detail || 'Deteksi gagal');
-
-      if (data.annotated_image && uploadPreview) {
-        uploadPreview.src = `data:image/jpeg;base64,${data.annotated_image}`;
-        uploadPreview.style.display = 'block';
-        if (placeholderResult) placeholderResult.style.display = 'none';
-      }
-
-      count.textContent = data.count;
-      lastDetectionCount = data.count;
-
-      if (saveDbBtn && data.count > 0) {
-        saveDbBtn.disabled = false;
-      }
-
-      if (data.count > 0) {
-        setMessage(`✅ Deteksi berhasil! ${data.count} objek ditemukan.`, 'success');
-      } else {
-        setMessage('⚠️ Tidak ada objek terdeteksi.', 'warning');
-      }
-      renderDetections(data.detections);
-    } catch (error) {
-      setMessage('❌ Error: ' + error.message, 'error');
-    } finally {
-      busy = false;
-      hideLoading();
-    }
-  }
-
-  startCam.onclick = async () => {
-    try {
-      lastDetectionCount = 0;
-      lastDetections = [];
-      count.textContent = '0';
-      isCameraActive = true;
-
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment' },
-        audio: false
-      });
-
-      // Attach stream to video element
-      cameraVideo.srcObject = stream;
-      cameraVideo.play();
-
-      if (cameraContainer) cameraContainer.style.display = 'block';
-      if (cameraVideo) cameraVideo.style.display = 'block';
-      if (overlay) overlay.style.display = 'block';
-      if (streamPlaceholder) streamPlaceholder.style.display = 'flex';
-      if (uploadArea) uploadArea.style.display = 'none';
-      if (uploadPreview) uploadPreview.style.display = 'none';
-      if (placeholderResult) placeholderResult.style.display = 'none';
-      if (startCam) startCam.disabled = true;
-      if (stopCam) stopCam.disabled = false;
-      if (liveIndicator) liveIndicator.style.display = 'inline';
-
-      createWebSocket();
-      timer = setInterval(sendFrame, 150); // ~6-7 fps
-      setMessage('📹 Kamera aktif. Mendeteksi...', 'info');
-    } catch (error) {
-      setMessage('❌ Kamera error: ' + error.message, 'error');
-    }
+  window.closePopup = function() {
+    popupOverlay.classList.remove('active');
   };
 
+  function showPopup(icon, title, msg) {
+    popupIcon.textContent = icon;
+    popupTitle.textContent = title;
+    popupMessage.textContent = msg;
+    popupOverlay.classList.add('active');
+  }
+
+  popupOverlay.onclick = (e) => {
+    if (e.target === popupOverlay) closePopup();
+  };
+
+  // Start camera - show video stream
+  startCam.onclick = async () => {
+    if (cameraContainer) cameraContainer.style.display = 'block';
+    if (streamVideo) streamVideo.src = `${API_URL}/video_feed`;
+    if (streamVideo) streamVideo.style.display = 'block';
+    if (uploadArea) uploadArea.style.display = 'none';
+    if (uploadPreview) uploadPreview.style.display = 'none';
+    if (placeholderResult) placeholderResult.style.display = 'none';
+    if (startCam) startCam.disabled = true;
+    if (stopCam) stopCam.disabled = false;
+    if (liveIndicator) liveIndicator.style.display = 'inline';
+
+    setMessage('📹 Kamera aktif. Streaming...', 'info');
+
+    // Show loading while polling for count
+    showLoading('🔍 Mendeteksi...');
+    count.textContent = '...';
+
+    // Poll for detection count
+    countPolling = setInterval(async () => {
+      try {
+        // Capture current frame and send for detection
+        const canvas = document.createElement('canvas');
+        canvas.width = 320;
+        canvas.height = 240;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(streamVideo, 0, 0, canvas.width, canvas.height);
+        const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.5));
+        const formData = new FormData();
+        formData.append('file', blob, 'frame.jpg');
+
+        const res = await fetch(`${API_URL}/api/detect`, { method: 'POST', body: formData });
+        const data = await res.json();
+
+        if (data.count !== undefined) {
+          count.textContent = data.count;
+          lastDetectionCount = data.count;
+
+          if (data.count > 0) {
+            renderDetections(data.detections);
+            if (saveDbBtn) saveDbBtn.disabled = false;
+            setMessage(`✅ ${data.count} objek terdeteksi`, 'success');
+            hideLoading();
+          }
+        }
+      } catch (e) {
+        console.error('Polling error:', e);
+      }
+    }, 1000); // Poll every 1 second
+  };
+
+  // Stop camera
   stopCam.onclick = () => {
-    clearInterval(timer);
-    if (stream) stream.getTracks().forEach(t => t.stop());
-    stream = null;
-    isCameraActive = false;
-    if (ws) ws.close();
+    if (countPolling) clearInterval(countPolling);
+    if (streamVideo) {
+      streamVideo.src = '';
+      streamVideo.style.display = 'none';
+    }
     if (cameraContainer) cameraContainer.style.display = 'none';
-    if (cameraVideo) {
-      cameraVideo.srcObject = null;
-      cameraVideo.style.display = 'none';
-    }
-    if (overlay) {
-      overlay.style.display = 'none';
-      clearOverlay();
-    }
-    if (streamPlaceholder) streamPlaceholder.style.display = 'none';
     if (uploadArea) uploadArea.style.display = 'block';
     if (startCam) startCam.disabled = false;
     if (stopCam) stopCam.disabled = true;
@@ -868,65 +602,26 @@ window.addEventListener('DOMContentLoaded', () => {
     setMessage(`⏹ Kamera berhenti. Total: ${lastDetectionCount} objek.`, 'info');
   };
 
-  // Save to Database button
-  document.getElementById('saveDbBtn').onclick = async () => {
-    if (lastDetectionCount === 0) {
-      setMessage('⚠️ Tidak ada data untuk disimpan.', 'warning');
+  function renderDetections(detections) {
+    if (!detections || detections.length === 0) {
+      detectionsPanel.style.display = 'none';
       return;
     }
 
-    setMessage('⏳ Menyimpan ke database...', 'info');
-    document.getElementById('saveDbBtn').disabled = true;
-    showLoading('💾 Menyimpan ke database...');
+    detectionsList.innerHTML = detections.map((d, i) => `
+      <div class="detection-item">
+        <div class="detection-num">${i + 1}</div>
+        <div class="detection-info">
+          <div class="detection-label">${d.label}</div>
+          <div class="detection-meta">Confidence: ${(d.confidence * 100).toFixed(1)}%</div>
+        </div>
+      </div>
+    `).join('');
 
-    const now = new Date();
-    const jakartaOffset = 7 * 60;
-    const jakartaTime = new Date(now.getTime() + (now.getTimezoneOffset() + jakartaOffset) * 60000);
-    const dt_ins = jakartaTime.toISOString().split('T')[0];
-    const seq_time = jakartaTime.toISOString().replace('T', ' ').split('.')[0];
+    detectionsPanel.style.display = 'block';
+  }
 
-    try {
-      const response = await fetch(`${API_URL}/api/save-detection`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          countc: lastDetectionCount,
-          dt_ins: dt_ins,
-          seq_time: seq_time,
-          area: AREA
-        })
-      });
-
-      const text = await response.text();
-      let result;
-      try {
-        result = JSON.parse(text);
-      } catch {
-        hideLoading();
-        setMessage('❌ Server error: ' + text.substring(0, 200), 'error');
-        showPopup('❌', 'Gagal!', 'Terjadi kesalahan pada server.');
-        return;
-      }
-
-      if (response.ok) {
-        hideLoading();
-        setMessage(`✅ Tersimpan! ID: ${result.id}`, 'success');
-        showPopup('✅', 'Berhasil Tersimpan!', `ID: ${result.id}\nJumlah: ${result.count}\nArea: ${AREA}\nWaktu: ${seq_time}`);
-      } else {
-        hideLoading();
-        setMessage('❌ Gagal menyimpan.', 'error');
-        showPopup('❌', 'Gagal!', result.detail || 'Terjadi kesalahan.');
-      }
-    } catch (error) {
-      hideLoading();
-      setMessage('❌ Error: ' + error.message, 'error');
-      showPopup('❌', 'Gagal!', 'Tidak dapat terhubung ke server.');
-    } finally {
-      document.getElementById('saveDbBtn').disabled = false;
-    }
-  };
-
-  // Upload button handlers
+  // Upload handlers
   uploadBtn.onclick = () => fileInput.click();
 
   fileInput.onchange = (e) => {
@@ -938,9 +633,7 @@ window.addEventListener('DOMContentLoaded', () => {
     e.preventDefault();
     uploadArea.style.background = 'rgba(0, 186, 124, 0.1)';
   };
-  uploadArea.ondragleave = () => {
-    uploadArea.style.background = '';
-  };
+  uploadArea.ondragleave = () => { uploadArea.style.background = ''; };
   uploadArea.ondrop = (e) => {
     e.preventDefault();
     uploadArea.style.background = '';
@@ -948,29 +641,88 @@ window.addEventListener('DOMContentLoaded', () => {
     if (file && file.type.startsWith('image/')) processFile(file);
   };
 
-  function processFile(file) {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      uploadPreview.src = e.target.result;
-      if (uploadPreview) uploadPreview.style.display = 'block';
-      if (cameraContainer) cameraContainer.style.display = 'none';
-      if (cameraVideo) cameraVideo.style.display = 'none';
-      if (overlay) overlay.style.display = 'none';
-      if (streamPlaceholder) streamPlaceholder.style.display = 'none';
-      if (uploadArea) uploadArea.style.display = 'none';
-      if (liveIndicator) liveIndicator.style.display = 'none';
-      clearInterval(timer);
+  async function processFile(file) {
+    showLoading('🔍 Menganalisis gambar...');
+    setMessage('⏳ Menganalisis...', 'info');
 
-      const img = new Image();
-      img.onload = () => sendImage(img);
-      img.src = e.target.result;
-    };
-    reader.readAsDataURL(file);
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const response = await fetch(`${API_URL}/api/detect`, { method: 'POST', body: formData });
+      const data = await response.json();
+
+      if (data.annotated_image && uploadPreview) {
+        uploadPreview.src = `data:image/jpeg;base64,${data.annotated_image}`;
+        uploadPreview.style.display = 'block';
+      }
+
+      count.textContent = data.count || 0;
+      lastDetectionCount = data.count || 0;
+
+      if (lastDetectionCount > 0) {
+        renderDetections(data.detections);
+        if (saveDbBtn) saveDbBtn.disabled = false;
+        setMessage(`✅ Deteksi berhasil! ${lastDetectionCount} objek ditemukan.`, 'success');
+      } else {
+        setMessage('⚠️ Tidak ada objek terdeteksi.', 'warning');
+      }
+    } catch (error) {
+      setMessage('❌ Error: ' + error.message, 'error');
+    } finally {
+      hideLoading();
+    }
   }
 
+  // Save to DB
+  document.getElementById('saveDbBtn').onclick = async () => {
+    if (lastDetectionCount === 0) {
+      setMessage('⚠️ Tidak ada data untuk disimpan.', 'warning');
+      return;
+    }
+
+    showLoading('💾 Menyimpan ke database...');
+    setMessage('⏳ Menyimpan...', 'info');
+    saveDbBtn.disabled = true;
+
+    const now = new Date();
+    const jakartaOffset = 7 * 60;
+    const jakartaTime = new Date(now.getTime() + (now.getTimezoneOffset() + jakartaOffset) * 60000);
+    const dt_ins = jakartaTime.toISOString().split('T')[0];
+    const seq_time = jakartaTime.toISOString().replace('T', ' ').split('.')[0];
+
+    try {
+      const response = await fetch(`${API_URL}/api/save-detection`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ countc: lastDetectionCount, dt_ins, seq_time, area: AREA })
+      });
+
+      const result = await response.json();
+
+      if (response.ok) {
+        hideLoading();
+        setMessage(`✅ Tersimpan! ID: ${result.id}`, 'success');
+        showPopup('✅', 'Berhasil!', `ID: ${result.id}\nJumlah: ${result.count}\nArea: ${AREA}\nWaktu: ${seq_time}`);
+      } else {
+        hideLoading();
+        setMessage('❌ Gagal menyimpan.', 'error');
+        showPopup('❌', 'Gagal!', result.detail || 'Error tidak diketahui');
+      }
+    } catch (error) {
+      hideLoading();
+      setMessage('❌ Error: ' + error.message, 'error');
+      showPopup('❌', 'Gagal!', 'Tidak dapat terhubung ke server.');
+    } finally {
+      saveDbBtn.disabled = false;
+    }
+  };
+
   // Initial state
-  if (cameraVideo) cameraVideo.style.display = 'none';
-  if (overlay) overlay.style.display = 'none';
-  if (streamPlaceholder) streamPlaceholder.style.display = 'none';
+  if (streamVideo) streamVideo.style.display = 'none';
 });
 </script>
+
+
+</body>
+</html>

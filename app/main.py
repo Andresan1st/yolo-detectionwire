@@ -19,9 +19,8 @@ import cv2
 import numpy as np
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, HTTPException, UploadFile, Body, WebSocket, WebSocketDisconnect
+from fastapi.responses import JSONResponse, FileResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, FileResponse
-from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from ultralytics import YOLO
 
@@ -51,7 +50,7 @@ if not MODEL_PATH.is_absolute():
 CONFIDENCE = float(os.getenv("CONFIDENCE", "0.35"))
 IOU = float(os.getenv("IOU", "0.45"))
 DEVICE = os.getenv("DEVICE", "cpu")
-MAX_FRAME_WIDTH = int(os.getenv("MAX_FRAME_WIDTH", "640"))  # Lower = faster processing
+MAX_FRAME_WIDTH = int(os.getenv("MAX_FRAME_WIDTH", "480"))  # Smaller = faster processing
 
 # Database Configuration
 DB_HOST = os.getenv("DB_HOST", "localhost")
@@ -244,7 +243,7 @@ def info():
 def root_with_area(area: str):
     """Serve frontend HTML page with area identifier (e.g., /labqc, /produksi)"""
     # Skip API routes
-    if area in ["api", "health", "info", "ui", "ws", "docs", "openapi.json", "redoc"]:
+    if area in ["api", "health", "info", "ui", "ws", "docs", "openapi.json", "redoc", "video_feed"]:
         raise HTTPException(status_code=404, detail="Not found")
     return FileResponse(TEMPLATE_DIR / "index.html")
 
@@ -389,6 +388,56 @@ async def websocket_detect(websocket: WebSocket):
             })
         except RuntimeError:
             pass
+
+
+# ==================== VIDEO STREAMING ====================
+
+@app.get("/video_feed")
+async def video_feed():
+    """
+    Video streaming langsung dengan deteksi YOLO.
+    Browser bisa langsung tampilkan dengan <img src="/video_feed">
+    """
+    return StreamingResponse(
+        generate_video_frames(),
+        media_type='multipart/x-mixed-replace; boundary=frame'
+    )
+
+
+def generate_video_frames():
+    """Generator untuk streaming video dengan bounding box."""
+    # Buka kamera
+    cap = cv2.VideoCapture(0)
+
+    # Atur resolusi lebih kecil untuk performa
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+
+    try:
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+
+            # Resize jika perlu
+            if frame.shape[1] > MAX_FRAME_WIDTH:
+                scale = MAX_FRAME_WIDTH / frame.shape[1]
+                frame = cv2.resize(frame, (MAX_FRAME_WIDTH, int(frame.shape[0] * scale)))
+
+            # Deteksi dengan YOLO
+            detections, annotated_frame, _ = detect_in_image(frame)
+
+            # Encode ke JPEG
+            ret, buffer = cv2.imencode('.jpg', annotated_frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
+            if not ret:
+                continue
+
+            # Yield frame dengan boundary multipart
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
+
+    finally:
+        cap.release()
 
 
 # ==================== BATCH DETECTION ====================
