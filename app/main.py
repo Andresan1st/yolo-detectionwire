@@ -1,128 +1,81 @@
 """
-Backend API untuk Copper Wire Branch Detection
-Dapat menerima gambar dari Laravel via base64 atau multipart
+Backend Flask untuk Copper Wire Branch Detection
+Streaming video dengan deteksi YOLO real-time
 """
 
 import base64
-import json
 import os
-import time
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
-from threading import Lock
-from typing import Optional
+from flask import Flask, request, jsonify, Response, render_template, send_file
+from flask_cors import CORS
+from dotenv import load_dotenv
+import cv2
+import numpy as np
 
 # Asia/Jakarta timezone (UTC+7)
 JAKARTA_TZ = timezone(timedelta(hours=7))
 
-import cv2
-import numpy as np
-from dotenv import load_dotenv
-from fastapi import FastAPI, File, HTTPException, UploadFile, Body, WebSocket, WebSocketDisconnect
-from fastapi.responses import JSONResponse, FileResponse, StreamingResponse
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from ultralytics import YOLO
-
-# Try to import database drivers
-PYODBC_AVAILABLE = False
-PYMSSQL_AVAILABLE = False
-
-try:
-    import pymssql
-    PYMSSQL_AVAILABLE = True
-except ImportError:
-    pymssql = None
-
-try:
-    import pyodbc
-    PYODBC_AVAILABLE = True
-except ImportError:
-    pyodbc = None
-
 load_dotenv()
 
+# Config
 ROOT = Path(__file__).resolve().parent.parent
 TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
 MODEL_PATH = Path(os.getenv("MODEL_PATH", "models/best.pt"))
 if not MODEL_PATH.is_absolute():
     MODEL_PATH = ROOT / MODEL_PATH
+
 CONFIDENCE = float(os.getenv("CONFIDENCE", "0.35"))
 IOU = float(os.getenv("IOU", "0.45"))
 DEVICE = os.getenv("DEVICE", "cpu")
-MAX_FRAME_WIDTH = int(os.getenv("MAX_FRAME_WIDTH", "480"))  # Smaller = faster processing
+MAX_FRAME_WIDTH = int(os.getenv("MAX_FRAME_WIDTH", "640"))
 
-# Database Configuration
+# Database
 DB_HOST = os.getenv("DB_HOST", "localhost")
 DB_USER = os.getenv("DB_USER", "sa")
 DB_PASSWORD = os.getenv("DB_PASSWORD", "")
 DB_NAME = os.getenv("DB_NAME", "master")
 DB_TABLE = os.getenv("DB_TABLE", "machine_detection_copper")
 
-app = FastAPI(
-    title="Wire Branch Detection API",
-    version="1.0.0",
-    description="API untuk deteksi kawat tembaga bercabang"
-)
-origins = [item.strip() for item in os.getenv("ALLOWED_ORIGINS", "*").split(",")]
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=False,
-    allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["*"],
-)
+# Flask app
+app = Flask(__name__)
+app.template_folder = str(TEMPLATE_DIR)
+CORS(app)
 
+# YOLO model
 _model = None
-_model_lock = Lock()
 
 
-def get_model() -> YOLO:
+def get_model():
     global _model
     if _model is not None:
         return _model
     if not MODEL_PATH.exists():
-        raise HTTPException(
-            status_code=503,
-            detail=f"Model belum ditemukan: {MODEL_PATH}. Letakkan model YOLO custom di lokasi tersebut.",
-        )
-    with _model_lock:
-        if _model is None:
-            _model = YOLO(str(MODEL_PATH))
+        raise RuntimeError(f"Model tidak ditemukan: {MODEL_PATH}")
+    _model = cv2.dnn.readNet(str(MODEL_PATH))
     return _model
 
 
-def decode_image(image_data: bytes) -> Optional[np.ndarray]:
-    """Decode image dari bytes ke numpy array"""
-    frame = cv2.imdecode(np.frombuffer(image_data, dtype=np.uint8), cv2.IMREAD_COLOR)
-    return frame
+def detect_in_image(frame):
+    """Deteksi objek dalam gambar dengan YOLO."""
+    from ultralytics import YOLO
 
+    global _model
+    if _model is None:
+        _model = YOLO(str(MODEL_PATH))
 
-def detect_in_image(frame: np.ndarray) -> tuple[list[dict], str, tuple]:
-    """
-    Deteksi objek dalam gambar.
-    Returns: (detections, annotated_image_base64, processed_dims)
-    """
     height, width = frame.shape[:2]
-
-    # Store original dimensions
-    original_height, original_width = height, width
 
     # Resize jika terlalu besar
     if width > MAX_FRAME_WIDTH:
         scale = MAX_FRAME_WIDTH / width
-        frame = cv2.resize(frame, (MAX_FRAME_WIDTH, int(height * scale)))
-        height, width = frame.shape[:2]
+        frame_resized = cv2.resize(frame, (MAX_FRAME_WIDTH, int(height * scale)))
+    else:
+        frame_resized = frame
 
     # Deteksi dengan YOLO
-    model = get_model()
-    result = model.predict(frame, conf=CONFIDENCE, iou=IOU, device=DEVICE, verbose=False)[0]
+    result = _model.predict(frame_resized, conf=CONFIDENCE, iou=IOU, device=DEVICE, verbose=False)[0]
 
-    # Deteksi dengan YOLO
-    model = get_model()
-    result = model.predict(frame, conf=CONFIDENCE, iou=IOU, device=DEVICE, verbose=False)[0]
-
-    # Parse hasil deteksi
     detections = []
     names = result.names or {}
     boxes = result.boxes
@@ -140,278 +93,81 @@ def detect_in_image(frame: np.ndarray) -> tuple[list[dict], str, tuple]:
                 "class_id": class_id,
                 "label": label,
                 "confidence": round(confidence, 3),
-                "bbox": {
-                    "x1": x1,
-                    "y1": y1,
-                    "x2": x2,
-                    "y2": y2,
-                    "width": x2 - x1,
-                    "height": y2 - y1
-                }
+                "bbox": {"x1": x1, "y1": y1, "x2": x2, "y2": y2}
             })
 
             # Gambar bounding box
-            cv2.rectangle(frame, (x1, y1), (x2, y2), (40, 220, 120), 2)
+            cv2.rectangle(frame_resized, (x1, y1), (x2, y2), (0, 255, 0), 2)
             cv2.putText(
-                frame,
+                frame_resized,
                 f"{label} {confidence:.0%}",
                 (x1, max(24, y1 - 8)),
                 cv2.FONT_HERSHEY_SIMPLEX,
-                0.65,
-                (40, 220, 120),
+                0.6,
+                (0, 255, 0),
                 2,
                 cv2.LINE_AA,
             )
 
-    # Encode annotated image ke base64
-    success, encoded = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 82])
-    if not success:
-        return detections, "", (width, height)
+    # Encode annotated image
+    ret, buffer = cv2.imencode('.jpg', frame_resized, [cv2.IMWRITE_JPEG_QUALITY, 85])
+    if not ret:
+        return detections, None
 
-    annotated_base64 = base64.b64encode(encoded.tobytes()).decode("ascii")
-    return detections, annotated_base64, (width, height)
-
-
-# ==================== REQUEST/RESPONSE MODELS ====================
-
-class DetectionRequest(BaseModel):
-    """Request body untuk deteksi via JSON/base64"""
-    image: str  # Base64 encoded image (tanpa prefix data:image/jpeg;base64,)
-    include_annotated: bool = True  # Apakah perlu mengembalikan gambar berannotated
+    annotated_base64 = base64.b64encode(buffer).decode('ascii')
+    return detections, annotated_base64
 
 
-class DetectionResponse(BaseModel):
-    """Response untuk deteksi"""
-    success: bool
-    count: int
-    detections: list[dict]
-    annotated_image: Optional[str] = None  # Base64
+# ==================== ROUTES ====================
+
+@app.route('/')
+def index():
+    """Serve frontend HTML"""
+    return render_template('index.html')
 
 
-class HealthResponse(BaseModel):
-    """Response untuk health check"""
-    status: str
-    model: str
-    model_loaded: bool
-    device: str
-    confidence: float
-    iou: float
+@app.route('/<area>')
+def index_area(area):
+    """Serve frontend with area identifier"""
+    if area in ['api', 'health', 'info', 'ws', 'docs', 'video_feed']:
+        return "Not found", 404
+    return render_template('index.html')
 
 
-# ==================== API ENDPOINTS ====================
-
-@app.get("/")
-def root():
-    """Serve frontend HTML page"""
-    return FileResponse(TEMPLATE_DIR / "index.html")
-
-
-@app.get("/ui")
-def root_ui():
-    """Serve frontend HTML page (alias)"""
-    return FileResponse(TEMPLATE_DIR / "index.html")
-
-
-@app.get("/health", response_model=HealthResponse)
+@app.route('/health')
 def health():
-    """Health check endpoint"""
-    return HealthResponse(
-        status="ok",
-        model=str(MODEL_PATH),
-        model_loaded=_model is not None,
-        device=DEVICE,
-        confidence=CONFIDENCE,
-        iou=IOU
-    )
-
-
-@app.get("/info")
-def info():
-    """Info tentang model dan konfigurasi"""
-    return {
-        "model_path": str(MODEL_PATH),
-        "model_exists": MODEL_PATH.exists(),
+    """Health check"""
+    return jsonify({
+        "status": "ok",
+        "model": str(MODEL_PATH),
         "model_loaded": _model is not None,
-        "confidence_threshold": CONFIDENCE,
-        "iou_threshold": IOU,
-        "device": DEVICE,
-        "max_frame_width": MAX_FRAME_WIDTH
-    }
-
-
-@app.get("/{area}")
-def root_with_area(area: str):
-    """Serve frontend HTML page with area identifier (e.g., /labqc, /produksi)"""
-    # Skip API routes
-    if area in ["api", "health", "info", "ui", "ws", "docs", "openapi.json", "redoc", "video_feed"]:
-        raise HTTPException(status_code=404, detail="Not found")
-    return FileResponse(TEMPLATE_DIR / "index.html")
-
-
-# ==================== DETECTION ENDPOINTS ====================
-
-@app.post("/api/detect", response_model=DetectionResponse)
-async def detect_upload(file: UploadFile = File(...)):
-    """
-    Deteksi dengan upload file (multipart/form-data).
-    Compatible dengan Laravel/frontend lama.
-    """
-    if not file.content_type or not file.content_type.startswith("image/"):
-        raise HTTPException(
-            status_code=415,
-            detail="File harus berupa gambar."
-        )
-
-    raw = await file.read()
-    frame = decode_image(raw)
-    if frame is None:
-        raise HTTPException(
-            status_code=400,
-            detail="Frame tidak dapat dibaca."
-        )
-
-    detections, annotated_base64, _ = detect_in_image(frame)
-
-    return DetectionResponse(
-        success=True,
-        count=len(detections),
-        detections=detections,
-        annotated_image=annotated_base64 if annotated_base64 else None
-    )
-
-
-@app.post("/api/detect/base64", response_model=DetectionResponse)
-async def detect_base64(request: DetectionRequest):
-    """
-    Deteksi dengan gambar base64 (JSON body).
-    Cocok untuk integrasi dengan Laravel.
-
-    Body JSON:
-    {
-        "image": "base64_encoded_image_without_prefix",
-        "include_annotated": true
-    }
-    """
-    try:
-        # Hapus prefix jika ada
-        image_data = request.image
-        if "," in image_data:
-            image_data = image_data.split(",")[-1]
-
-        # Decode base64 ke bytes
-        raw = base64.b64decode(image_data)
-        frame = decode_image(raw)
-
-        if frame is None:
-            raise HTTPException(
-                status_code=400,
-                detail="Gambar tidak dapat dibaca."
-            )
-
-        detections, annotated_base64, _ = detect_in_image(frame)
-
-        return DetectionResponse(
-            success=True,
-            count=len(detections),
-            detections=detections,
-            annotated_image=annotated_base64 if request.include_annotated else None
-        )
-
-    except base64.binascii.Error:
-        raise HTTPException(
-            status_code=400,
-            detail="Format base64 tidak valid."
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error processing image: {str(e)}"
-        )
-
-
-@app.post("/api/detect/raw")
-async def detect_raw(image_data: bytes = Body(...)):
-    """
-    Deteksi dengan raw bytes image (tanpa wrapper JSON).
-    Paling cepat untuk streaming data.
-
-    Headers: Content-Type: image/jpeg (atau image/png)
-    """
-    frame = decode_image(image_data)
-    if frame is None:
-        raise HTTPException(
-            status_code=400,
-            detail="Gambar tidak dapat dibaca."
-        )
-
-    detections, annotated_base64, _ = detect_in_image(frame)
-
-    return JSONResponse({
-        "success": True,
-        "count": len(detections),
-        "detections": detections,
-        "annotated_image": annotated_base64 if annotated_base64 else None
+        "device": DEVICE
     })
 
 
-@app.websocket("/ws/detect")
-async def websocket_detect(websocket: WebSocket):
-    """Real-time webcam detection over WebSocket."""
-    await websocket.accept()
-    try:
-        while True:
-            raw = await websocket.receive_bytes()
-            frame = decode_image(raw)
-            if frame is None:
-                await websocket.send_json({
-                    "success": False,
-                    "error": "Frame tidak dapat dibaca."
-                })
-                continue
-
-            detections, annotated_base64, processed_dims = detect_in_image(frame)
-            await websocket.send_json({
-                "success": True,
-                "count": len(detections),
-                "detections": detections,
-                "annotated_image": annotated_base64 if annotated_base64 else None,
-                "image_width": processed_dims[0],
-                "image_height": processed_dims[1]
-            })
-    except WebSocketDisconnect:
-        return
-    except Exception as e:
-        try:
-            await websocket.send_json({
-                "success": False,
-                "error": str(e)
-            })
-        except RuntimeError:
-            pass
-
-
-# ==================== VIDEO STREAMING ====================
-
-@app.get("/video_feed")
-async def video_feed():
-    """
-    Video streaming langsung dengan deteksi YOLO.
-    Browser bisa langsung tampilkan dengan <img src="/video_feed">
-    """
-    return StreamingResponse(
-        generate_video_frames(),
-        media_type='multipart/x-mixed-replace; boundary=frame'
+@app.route('/video_feed')
+def video_feed():
+    """Video streaming dengan deteksi YOLO"""
+    return Response(
+        generate_frames(),
+        mimetype='multipart/x-mixed-replace; boundary=frame'
     )
 
 
-def generate_video_frames():
-    """Generator untuk streaming video dengan bounding box."""
+def generate_frames():
+    """Generator untuk streaming video dengan bounding box"""
+    from ultralytics import YOLO
+
     # Buka kamera
     cap = cv2.VideoCapture(0)
 
-    # Atur resolusi lebih kecil untuk performa
+    # Set resolusi
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+
+    # Load model
+    if _model is None:
+        _model = YOLO(str(MODEL_PATH))
 
     try:
         while True:
@@ -425,14 +181,17 @@ def generate_video_frames():
                 frame = cv2.resize(frame, (MAX_FRAME_WIDTH, int(frame.shape[0] * scale)))
 
             # Deteksi dengan YOLO
-            detections, annotated_frame, _ = detect_in_image(frame)
+            _, annotated_frame = detect_in_image(frame)
+
+            if annotated_frame is None:
+                annotated_frame = frame
 
             # Encode ke JPEG
             ret, buffer = cv2.imencode('.jpg', annotated_frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
             if not ret:
                 continue
 
-            # Yield frame dengan boundary multipart
+            # Yield frame
             yield (b'--frame\r\n'
                    b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
 
@@ -440,217 +199,91 @@ def generate_video_frames():
         cap.release()
 
 
-# ==================== BATCH DETECTION ====================
+@app.route('/api/detect', methods=['POST'])
+def detect_upload():
+    """Deteksi dengan upload file"""
+    if 'file' not in request.files:
+        return jsonify({"error": "No file provided"}), 400
 
-class BatchDetectionRequest(BaseModel):
-    """Request untuk deteksi banyak gambar sekaligus"""
-    images: list[str]  # Array of base64 images
-    include_annotated: bool = True
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({"error": "No file selected"}), 400
 
+    # Read image
+    file_bytes = np.frombuffer(file.read(), dtype=np.uint8)
+    frame = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
 
-@app.post("/api/detect/batch", response_model=dict)
-async def detect_batch(request: BatchDetectionRequest):
-    """
-    Deteksi banyak gambar sekaligus.
-    Cocok untuk proses batch dari Laravel.
+    if frame is None:
+        return jsonify({"error": "Cannot decode image"}), 400
 
-    Body JSON:
-    {
-        "images": ["base64_image_1", "base64_image_2", ...],
-        "include_annotated": true
-    }
-    """
-    results = []
+    # Detect
+    detections, annotated_base64 = detect_in_image(frame)
 
-    for i, img_base64 in enumerate(request.images):
-        try:
-            # Hapus prefix jika ada
-            image_data = img_base64
-            if "," in image_data:
-                image_data = image_data.split(",")[-1]
-
-            raw = base64.b64decode(image_data)
-            frame = decode_image(raw)
-
-            if frame is None:
-                results.append({
-                    "index": i,
-                    "success": False,
-                    "error": "Cannot decode image"
-                })
-                continue
-
-            detections, annotated_base64, _ = detect_in_image(frame)
-
-            results.append({
-                "index": i,
-                "success": True,
-                "count": len(detections),
-                "detections": detections,
-                "annotated_image": annotated_base64 if request.include_annotated else None
-            })
-
-        except Exception as e:
-            results.append({
-                "index": i,
-                "success": False,
-                "error": str(e)
-            })
-
-    return {
-        "total": len(request.images),
-        "processed": len([r for r in results if r.get("success")]),
-        "results": results
-    }
+    return jsonify({
+        "success": True,
+        "count": len(detections),
+        "detections": detections,
+        "annotated_image": annotated_base64
+    })
 
 
-# ==================== DATABASE ENDPOINTS ====================
+@app.route('/api/save-detection', methods=['POST'])
+def save_detection():
+    """Simpan hasil deteksi ke database"""
+    data = request.json or {}
 
-class SaveDetectionRequest(BaseModel):
-    """Request untuk menyimpan hasil deteksi ke database"""
-    countc: int
-    dt_ins: Optional[str] = None
-    seq_time: Optional[str] = None
-    area: Optional[str] = None
-
-
-class SaveDetectionResponse(BaseModel):
-    """Response untuk save detection"""
-    success: bool
-    id: Optional[int] = None
-    countc: int
-    area: str
-    message: str
-  
-
-
-def get_db_connection():
-    """Create database connection"""
-    if PYMSSQL_AVAILABLE:
-        # Use pymssql (recommended - easier to install)
-        try:
-            conn = pymssql.connect(
-                server=DB_HOST,
-                user=DB_USER,
-                password=DB_PASSWORD,
-                database=DB_NAME
-            )
-            return conn
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Database connection failed (pymssql): {str(e)}")
-
-    elif PYODBC_AVAILABLE:
-        # Fallback to pyodbc
-        connection_string = (
-            f"DRIVER={{ODBC Driver 17 for SQL Server}};"
-            f"SERVER={DB_HOST};"
-            f"DATABASE={DB_NAME};"
-            f"UID={DB_USER};"
-            f"PWD={DB_PASSWORD};"
-        )
-        try:
-            conn = pyodbc.connect(connection_string)
-            return conn
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Database connection failed (pyodbc): {str(e)}")
-
-    else:
-        raise HTTPException(
-            status_code=500,
-            detail="No database driver available. Install pymssql: pip install pymssql"
-        )
-
-
-@app.post("/api/save-detection", response_model=SaveDetectionResponse)
-async def save_detection(request: SaveDetectionRequest):
-    """
-    Simpan hasil deteksi ke SQL Server database.
-    """
-    if not PYMSSQL_AVAILABLE and not PYODBC_AVAILABLE:
-        raise HTTPException(
-            status_code=500,
-            detail="Database driver not installed. Run: pip install pymssql"
-        )
-
+    # Database connection
     try:
-        conn = get_db_connection()
+        import pymssql
+        conn = pymssql.connect(
+            server=DB_HOST,
+            user=DB_USER,
+            password=DB_PASSWORD,
+            database=DB_NAME
+        )
         cursor = conn.cursor()
 
-        # Get timestamp - use system LOCAL time (Asia/Jakarta WIB)
-        # time.localtime() returns local time based on system timezone
-        local_time = time.localtime()
+        # Get timestamp
+        local_time = datetime.now()
+        dt_ins = data.get('dt_ins') or local_time.strftime("%Y-%m-%d")
+        seq_time = data.get('seq_time') or local_time.strftime("%Y-%m-%d %H:%M:%S")
+        area = data.get('area') or "default"
 
-        if request.dt_ins:
-            dt_ins = request.dt_ins
-        else:
-            dt_ins = time.strftime("%Y-%m-%d", local_time)
-
-        seq_time = time.strftime("%Y-%m-%d %H:%M:%S", local_time)
-
-        area = request.area if request.area else "default"
-
-        # Insert query - pymssql uses %s, pyodbc uses ?
-        if PYMSSQL_AVAILABLE:
-            insert_query = f"""
-                INSERT INTO {DB_TABLE} (countc, dt_ins, seq_time, area)
-                VALUES (%s, %s, %s, %s)
-            """
-        else:
-            insert_query = f"""
-                INSERT INTO {DB_TABLE} (countc, dt_ins, seq_time, area)
-                OUTPUT INSERTED.id
-                VALUES (?, ?, ?, ?)
-            """
-
-        if PYMSSQL_AVAILABLE:
-            cursor.execute(insert_query, (request.countc, dt_ins, seq_time, area))
-            cursor.execute("SELECT SCOPE_IDENTITY()")
-            row = cursor.fetchone()
-            inserted_id = row[0] if row else None
-        else:
-            cursor.execute(insert_query, (request.countc, dt_ins, seq_time, area))
-            row = cursor.fetchone()
-            inserted_id = row[0] if row else None
+        cursor.execute(
+            f"INSERT INTO {DB_TABLE} (countc, dt_ins, seq_time, area) OUTPUT INSERTED.id VALUES (%s, %s, %s, %s)",
+            (data.get('countc', 0), dt_ins, seq_time, area)
+        )
+        inserted_id = cursor.fetchone()[0]
 
         conn.commit()
         cursor.close()
         conn.close()
 
-        return SaveDetectionResponse(
-            success=True,
-            id=inserted_id,
-            countc=request.countc,
-            area=area,
-            message=f"Saved successfully at {seq_time}, Area: {area}"
-        )
+        return jsonify({
+            "success": True,
+            "id": inserted_id,
+            "count": data.get('countc', 0),
+            "message": f"Saved successfully at {seq_time}"
+        })
 
-        conn.commit()
-        cursor.close()
-        conn.close()
-
-        return SaveDetectionResponse(
-            success=True,
-            id=inserted_id,
-            countc=request.countc,
-            message=f"Saved successfully at {seq_time}"
-        )
-
-    except pymssql.Error as e:
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(
-            status_code=500,
-            detail=f"Database error (pymssql): {str(e)}"
-        )
     except Exception as e:
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error: {str(e)}"
-        )
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+# ==================== MAIN ====================
+
+if __name__ == '__main__':
+    print(f"""
+╔═══════════════════════════════════════════════════════════╗
+║         Wire Branch Detection - Flask Server             ║
+╠═══════════════════════════════════════════════════════════╣
+║  Model: {MODEL_PATH}          ║
+║  Device: {DEVICE}                                          ║
+║  Confidence: {CONFIDENCE}                                      ║
+╠═══════════════════════════════════════════════════════════╣
+║  Main:     http://localhost:5000                       ║
+║  Stream:   http://localhost:5000/video_feed             ║
+║  API Docs: http://localhost:5000/docs                  ║
+╚═══════════════════════════════════════════════════════════╝
+    """)
+    app.run(host='0.0.0.0', port=5000, debug=True, threaded=True)
