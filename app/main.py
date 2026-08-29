@@ -271,7 +271,7 @@ async def detect_upload(file: UploadFile = File(...)):
             detail="Frame tidak dapat dibaca."
         )
 
-    detections, annotated_base64 = detect_in_image(frame)
+    detections, annotated_base64, _ = detect_in_image(frame)
 
     return DetectionResponse(
         success=True,
@@ -309,7 +309,7 @@ async def detect_base64(request: DetectionRequest):
                 detail="Gambar tidak dapat dibaca."
             )
 
-        detections, annotated_base64 = detect_in_image(frame)
+        detections, annotated_base64, _ = detect_in_image(frame)
 
         return DetectionResponse(
             success=True,
@@ -345,7 +345,7 @@ async def detect_raw(image_data: bytes = Body(...)):
             detail="Gambar tidak dapat dibaca."
         )
 
-    detections, annotated_base64 = detect_in_image(frame)
+    detections, annotated_base64, _ = detect_in_image(frame)
 
     return JSONResponse({
         "success": True,
@@ -431,7 +431,7 @@ async def detect_batch(request: BatchDetectionRequest):
                 })
                 continue
 
-            detections, annotated_base64 = detect_in_image(frame)
+            detections, annotated_base64, _ = detect_in_image(frame)
 
             results.append({
                 "index": i,
