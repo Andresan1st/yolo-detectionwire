@@ -408,6 +408,7 @@
       </div>
       <div class="card-body" id="inputStage">
         <div id="cameraContainer" style="display:none; position:relative; width:100%; height:100%; background:#242b33;">
+          <video id="cameraVideo" autoplay muted playsinline style="width:100%; height:100%; object-fit:contain;"></video>
           <img id="streamImage" alt="Stream" style="width:100%; height:100%; object-fit:contain; display:none;">
           <div id="streamPlaceholder" style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; color:var(--text-secondary);">
             <div style="font-size:48px; margin-bottom:12px;">📹</div>
@@ -460,6 +461,7 @@
 
 <script>
 window.addEventListener('DOMContentLoaded', () => {
+  const cameraVideo = document.getElementById('cameraVideo');
   const streamImage = document.getElementById('streamImage');
   const streamPlaceholder = document.getElementById('streamPlaceholder');
   const cameraContainer = document.getElementById('cameraContainer');
@@ -668,27 +670,23 @@ window.addEventListener('DOMContentLoaded', () => {
   function sendFrame() {
     if (!ws || ws.readyState !== WebSocket.OPEN || busy) return;
     if (!stream || stream.active === false) return;
+    if (!cameraVideo || cameraVideo.readyState < 2) return;
 
-    // Capture frame from video
-    const video = document.createElement('video');
-    video.srcObject = stream;
-    video.onloadedmetadata = () => {
+    try {
       const canvas = document.createElement('canvas');
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
+      canvas.width = cameraVideo.videoWidth;
+      canvas.height = cameraVideo.videoHeight;
       const ctx = canvas.getContext('2d');
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      ctx.drawImage(cameraVideo, 0, 0, canvas.width, canvas.height);
 
       canvas.toBlob((blob) => {
         if (!blob) return;
-        try {
-          busy = true;
-          ws.send(blob);
-        } catch (error) {
-          busy = false;
-        }
+        busy = true;
+        ws.send(blob);
       }, 'image/jpeg', 0.7);
-    };
+    } catch (error) {
+      console.error('Error sending frame:', error);
+    }
   }
 
   // Upload handlers
@@ -757,7 +755,12 @@ window.addEventListener('DOMContentLoaded', () => {
         audio: false
       });
 
+      // Attach stream to video element
+      cameraVideo.srcObject = stream;
+      cameraVideo.play();
+
       if (cameraContainer) cameraContainer.style.display = 'block';
+      if (cameraVideo) cameraVideo.style.display = 'block';
       if (streamPlaceholder) streamPlaceholder.style.display = 'flex';
       if (streamImage) streamImage.style.display = 'none';
       if (uploadArea) uploadArea.style.display = 'none';
@@ -782,6 +785,10 @@ window.addEventListener('DOMContentLoaded', () => {
     isCameraActive = false;
     if (ws) ws.close();
     if (cameraContainer) cameraContainer.style.display = 'none';
+    if (cameraVideo) {
+      cameraVideo.srcObject = null;
+      cameraVideo.style.display = 'none';
+    }
     if (streamImage) streamImage.style.display = 'none';
     if (streamPlaceholder) streamPlaceholder.style.display = 'none';
     if (uploadArea) uploadArea.style.display = 'block';
@@ -877,7 +884,9 @@ window.addEventListener('DOMContentLoaded', () => {
       uploadPreview.src = e.target.result;
       if (uploadPreview) uploadPreview.style.display = 'block';
       if (cameraContainer) cameraContainer.style.display = 'none';
+      if (cameraVideo) cameraVideo.style.display = 'none';
       if (streamImage) streamImage.style.display = 'none';
+      if (streamPlaceholder) streamPlaceholder.style.display = 'none';
       if (uploadArea) uploadArea.style.display = 'none';
       if (liveIndicator) liveIndicator.style.display = 'none';
       clearInterval(timer);
@@ -890,6 +899,7 @@ window.addEventListener('DOMContentLoaded', () => {
   }
 
   // Initial state
+  if (cameraVideo) cameraVideo.style.display = 'none';
   if (streamImage) streamImage.style.display = 'none';
   if (streamPlaceholder) streamPlaceholder.style.display = 'none';
 });
