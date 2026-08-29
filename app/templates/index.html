@@ -376,7 +376,7 @@ async function loadONNXModel() {
 
     console.log('Loading ONNX model from:', MODEL_URL);
     session = await ort.InferenceSession.create(MODEL_URL, {
-      executionProviders: ['wasm', 'webgl', 'cpu']
+      executionProviders: ['wasm', 'cpu']
     });
 
     isModelReady = true;
