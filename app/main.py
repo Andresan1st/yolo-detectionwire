@@ -156,6 +156,7 @@ def video_feed():
 
 def generate_frames():
     """Generator untuk streaming video dengan bounding box"""
+    global _model
     from ultralytics import YOLO
 
     # Buka kamera
@@ -283,7 +284,20 @@ if __name__ == '__main__':
 ╠═══════════════════════════════════════════════════════════╣
 ║  Main:     http://localhost:5000                       ║
 ║  Stream:   http://localhost:5000/video_feed             ║
-║  API Docs: http://localhost:5000/docs                  ║
 ╚═══════════════════════════════════════════════════════════╝
     """)
-    app.run(host='0.0.0.0', port=5000, debug=True, threaded=True)
+
+    # Cek environment untuk HTTPS
+    USE_HTTPS = os.getenv('USE_HTTPS', 'false').lower() == 'true'
+
+    if USE_HTTPS:
+        # Generate self-signed cert jika belum ada
+        if not os.path.exists('cert.pem'):
+            import subprocess
+            subprocess.run(['openssl', 'req', '-new', '-x509', '-keyout', 'key.pem',
+                         '-out', 'cert.pem', '-days', '365', '-nodes',
+                         '-subj', '/CN=localhost'], check=True)
+        app.run(host='0.0.0.0', port=5000, debug=True, threaded=True,
+                ssl_context=('cert.pem', 'key.pem'))
+    else:
+        app.run(host='0.0.0.0', port=5000, debug=True, threaded=True)
