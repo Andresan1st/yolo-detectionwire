@@ -51,7 +51,7 @@ if not MODEL_PATH.is_absolute():
 CONFIDENCE = float(os.getenv("CONFIDENCE", "0.35"))
 IOU = float(os.getenv("IOU", "0.45"))
 DEVICE = os.getenv("DEVICE", "cpu")
-MAX_FRAME_WIDTH = int(os.getenv("MAX_FRAME_WIDTH", "1280"))
+MAX_FRAME_WIDTH = int(os.getenv("MAX_FRAME_WIDTH", "640"))  # Lower = faster processing
 
 # Database Configuration
 DB_HOST = os.getenv("DB_HOST", "localhost")
