@@ -213,15 +213,6 @@ def root_ui():
     return FileResponse(TEMPLATE_DIR / "index.html")
 
 
-@app.get("/{area}")
-def root_with_area(area: str):
-    """Serve frontend HTML page with area identifier (e.g., /labqc, /produksi)"""
-    # Skip API routes
-    if area in ["api", "health", "info", "ui", "ws", "docs", "openapi.json", "redoc"]:
-        raise HTTPException(status_code=404, detail="Not found")
-    return FileResponse(TEMPLATE_DIR / "index.html")
-
-
 @app.get("/health", response_model=HealthResponse)
 def health():
     """Health check endpoint"""
@@ -247,6 +238,15 @@ def info():
         "device": DEVICE,
         "max_frame_width": MAX_FRAME_WIDTH
     }
+
+
+@app.get("/{area}")
+def root_with_area(area: str):
+    """Serve frontend HTML page with area identifier (e.g., /labqc, /produksi)"""
+    # Skip API routes
+    if area in ["api", "health", "info", "ui", "ws", "docs", "openapi.json", "redoc"]:
+        raise HTTPException(status_code=404, detail="Not found")
+    return FileResponse(TEMPLATE_DIR / "index.html")
 
 
 # ==================== DETECTION ENDPOINTS ====================
