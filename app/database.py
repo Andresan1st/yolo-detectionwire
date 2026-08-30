@@ -1,181 +1,97 @@
 """
-Database configuration and connection for SQL Server
+Database configuration - SQL Server only
 """
-import pyodbc
-from contextlib import contextmanager
-from datetime import datetime
+import pymssql
 import os
-from dotenv import load_dotenv
+from datetime import datetime
+from typing import List, Dict, Optional
 
-load_dotenv()
-
-# Database configuration
+# SQL Server configuration
 DB_CONFIG = {
     'server': os.getenv('DB_HOST', '192.168.10.15'),
     'database': os.getenv('DB_NAME', 'db_it'),
-    'username': os.getenv('DB_USER', 'user_sql'),
+    'user': os.getenv('DB_USER', 'user_sql'),
     'password': os.getenv('DB_PASSWORD', '1234'),
-    'table': os.getenv('DB_TABLE', 'machine_detection_copper'),
 }
 
-def get_connection_string():
-    """Build SQL Server connection string"""
-    return (
-        f"DRIVER={{ODBC Driver 17 for SQL Server}};"
-        f"SERVER={DB_CONFIG['server']};"
-        f"DATABASE={DB_CONFIG['database']};"
-        f"UID={DB_CONFIG['username']};"
-        f"PWD={DB_CONFIG['password']};"
+def get_connection():
+    """Get SQL Server connection"""
+    return pymssql.connect(
+        server=DB_CONFIG['server'],
+        database=DB_CONFIG['database'],
+        user=DB_CONFIG['user'],
+        password=DB_CONFIG['password']
     )
 
-@contextmanager
-def get_db_connection():
-    """Context manager for database connection"""
-    conn = None
-    try:
-        conn = pyodbc.connect(get_connection_string())
-        yield conn
-    except pyodbc.Error as e:
-        print(f"Database connection error: {e}")
-        raise
-    finally:
-        if conn:
-            conn.close()
-
 def init_database():
-    """Initialize database and create table if not exists"""
+    """Initialize database - create table if not exists"""
     try:
-        with get_db_connection() as conn:
-            cursor = conn.cursor()
+        conn = get_connection()
+        cursor = conn.cursor()
 
-            # Create table if not exists
-            cursor.execute(f"""
-                IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='{DB_CONFIG['table']}' AND xtype='U')
-                CREATE TABLE {DB_CONFIG['table']} (
-                    id INT IDENTITY(1,1) PRIMARY KEY,
-                    timestamp DATETIME DEFAULT GETDATE(),
-                    detection_count INT DEFAULT 0,
-                    confidence_avg FLOAT DEFAULT 0.0,
-                    image_path NVARCHAR(500),
-                    element_type NVARCHAR(50) DEFAULT 'copper',
-                    status NVARCHAR(50) DEFAULT 'detected',
-                    camera_source NVARCHAR(100),
-                    created_at DATETIME DEFAULT GETDATE()
-                )
-            """)
-            conn.commit()
-            print(f"Database table '{DB_CONFIG['table']}' is ready")
+        cursor.execute("""
+            IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='machine_detection_copper' AND xtype='U')
+            CREATE TABLE machine_detection_copper (
+                id INT IDENTITY(1,1) PRIMARY KEY,
+                timestamp DATETIME DEFAULT GETDATE(),
+                detection_count INT DEFAULT 0,
+                confidence_avg FLOAT DEFAULT 0.0,
+                image_path NVARCHAR(500),
+                element_type NVARCHAR(50) DEFAULT 'copper',
+                status NVARCHAR(50) DEFAULT 'detected',
+                camera_source NVARCHAR(100),
+                created_at DATETIME DEFAULT GETDATE()
+            )
+        """)
+        conn.commit()
+        conn.close()
+        print("✅ SQL Server connection ready")
+        print(f"   Server: {DB_CONFIG['server']}")
+        print(f"   Database: {DB_CONFIG['database']}")
+        print(f"   Table: machine_detection_copper")
 
     except Exception as e:
-        print(f"Database initialization error: {e}")
-        # Create SQLite fallback
-        create_sqlite_fallback()
-
-def create_sqlite_fallback():
-    """Create SQLite fallback database"""
-    import sqlite3
-    db_path = os.path.join(os.path.dirname(__file__), 'detections.db')
-
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS machine_detection_copper (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-            detection_count INTEGER DEFAULT 0,
-            confidence_avg REAL DEFAULT 0.0,
-            image_path TEXT,
-            element_type TEXT DEFAULT 'copper',
-            status TEXT DEFAULT 'detected',
-            camera_source TEXT,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-    conn.commit()
-    conn.close()
-    print(f"SQLite fallback database created at {db_path}")
+        print(f"❌ Database error: {e}")
+        raise
 
 def save_detection(detection_data: dict) -> int:
     """Save detection record to database"""
-    try:
-        with get_db_connection() as conn:
-            cursor = conn.cursor()
+    conn = get_connection()
+    cursor = conn.cursor()
 
-            cursor.execute(f"""
-                INSERT INTO {DB_CONFIG['table']}
-                (detection_count, confidence_avg, image_path, element_type, status, camera_source)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (
-                detection_data.get('detection_count', 0),
-                detection_data.get('confidence_avg', 0.0),
-                detection_data.get('image_path'),
-                detection_data.get('element_type', 'copper'),
-                detection_data.get('status', 'detected'),
-                detection_data.get('camera_source')
-            ))
-            conn.commit()
-            return cursor.identity
+    cursor.execute("""
+        INSERT INTO machine_detection_copper
+        (detection_count, confidence_avg, image_path, element_type, status, camera_source)
+        VALUES (%d, %f, %s, %s, %s, %s)
+    """, (
+        detection_data.get('detection_count', 0),
+        detection_data.get('confidence_avg', 0.0),
+        detection_data.get('image_path'),
+        detection_data.get('element_type', 'copper'),
+        detection_data.get('status', 'detected'),
+        detection_data.get('camera_source')
+    ))
 
-    except Exception as e:
-        print(f"Error saving to SQL Server: {e}")
-        # SQLite fallback
-        import sqlite3
-        db_path = os.path.join(os.path.dirname(__file__), 'detections.db')
+    conn.commit()
+    cursor.execute("SELECT @@IDENTITY")
+    row_id = int(cursor.fetchone()[0])
+    conn.close()
+    return row_id
 
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-
-        cursor.execute("""
-            INSERT INTO machine_detection_copper
-            (detection_count, confidence_avg, image_path, element_type, status, camera_source)
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, (
-            detection_data.get('detection_count', 0),
-            detection_data.get('confidence_avg', 0.0),
-            detection_data.get('image_path'),
-            detection_data.get('element_type', 'copper'),
-            detection_data.get('status', 'detected'),
-            detection_data.get('camera_source')
-        ))
-        conn.commit()
-        row_id = cursor.lastrowid
-        conn.close()
-        return row_id
-
-def get_recent_detections(limit: int = 100):
+def get_recent_detections(limit: int = 100) -> List[Dict]:
     """Get recent detection records"""
-    try:
-        with get_db_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(f"""
-                SELECT TOP {limit} id, timestamp, detection_count, confidence_avg,
-                       image_path, element_type, status, camera_source, created_at
-                FROM {DB_CONFIG['table']}
-                ORDER BY created_at DESC
-            """)
-            columns = [column[0] for column in cursor.description]
-            results = [dict(zip(columns, row)) for row in cursor.fetchall()]
-            return results
+    conn = get_connection()
+    cursor = conn.cursor()
 
-    except Exception as e:
-        print(f"Error reading from SQL Server: {e}")
-        # SQLite fallback
-        import sqlite3
-        db_path = os.path.join(os.path.dirname(__file__), 'detections.db')
+    cursor.execute(f"""
+        SELECT TOP {limit} id, timestamp, detection_count, confidence_avg,
+               image_path, element_type, status, camera_source, created_at
+        FROM machine_detection_copper
+        ORDER BY created_at DESC
+    """)
 
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
+    columns = [column[0] for column in cursor.description]
+    results = [dict(zip(columns, row)) for row in cursor.fetchall()]
+    conn.close()
 
-        cursor.execute("""
-            SELECT id, timestamp, detection_count, confidence_avg,
-                   image_path, element_type, status, camera_source, created_at
-            FROM machine_detection_copper
-            ORDER BY created_at DESC
-            LIMIT ?
-        """, (limit,))
-
-        columns = [column[0] for column in cursor.description]
-        results = [dict(zip(columns, row)) for row in cursor.fetchall()]
-        conn.close()
-        return results
+    return results
