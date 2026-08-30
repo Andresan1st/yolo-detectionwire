@@ -604,7 +604,7 @@ function setStatus(connected) {
 function setOverlaySize() {
   if (!overlay || !video) return;
 
-  // Use actual displayed size (clientWidth/clientHeight) instead of native resolution
+  // Use actual displayed size
   const displayWidth = video.clientWidth || video.offsetWidth;
   const displayHeight = video.clientHeight || video.offsetHeight;
 
@@ -612,8 +612,12 @@ function setOverlaySize() {
   overlay.height = displayHeight;
 }
 
+// Store original video dimensions
+let originalVideoWidth = 0;
+let originalVideoHeight = 0;
+
 function drawOverlay(detections) {
-  if (!video || !overlay) return;
+  if (!video || !overlay || !detections || detections.length === 0) return;
 
   setOverlaySize();
 
@@ -622,13 +626,23 @@ function drawOverlay(detections) {
 
   ctx.clearRect(0, 0, overlay.width, overlay.height);
 
-  // Get scaling factors between native video and displayed size
-  const nativeWidth = video.videoWidth || overlay.width;
-  const nativeHeight = video.videoHeight || overlay.height;
+  // Get display dimensions
   const displayWidth = video.clientWidth || overlay.width;
   const displayHeight = video.clientHeight || overlay.height;
-  const scaleX = displayWidth / nativeWidth;
-  const scaleY = displayHeight / nativeHeight;
+
+  // Get original video capture dimensions (before server resize)
+  const nativeWidth = originalVideoWidth || displayWidth;
+  const nativeHeight = originalVideoHeight || displayHeight;
+
+  // Server processes at MAX_FRAME_WIDTH (416px), maintaining aspect ratio
+  // Scale factor: display size / server processed size
+  // We need to know what width the server used
+  const SERVER_MAX_WIDTH = 416;
+  const serverProcessedWidth = SERVER_MAX_WIDTH;
+  const serverProcessedHeight = Math.round((SERVER_MAX_WIDTH / nativeWidth) * nativeHeight) || displayHeight;
+
+  const scaleX = displayWidth / serverProcessedWidth;
+  const scaleY = displayHeight / serverProcessedHeight;
 
   detections.forEach((d) => {
     // Scale bounding box to match displayed video size
@@ -637,14 +651,14 @@ function drawOverlay(detections) {
     const w = (d.bbox.x2 - d.bbox.x1) * scaleX;
     const h = (d.bbox.y2 - d.bbox.y1) * scaleY;
 
-    // Draw box - match backend (thickness 2)
-    ctx.strokeStyle = '#28dc78'; // RGB from BGR(40, 220, 120)
+    // Draw box
+    ctx.strokeStyle = '#28dc78';
     ctx.lineWidth = 2;
     ctx.strokeRect(x1, y1, w, h);
 
-    // Draw label background - match backend font scale
+    // Draw label
     const label = `${d.label} ${Math.round(d.confidence * 100)}%`;
-    ctx.font = '600 14px "Segoe UI", Arial, sans-serif'; // Match backend FONT_HERSHEY_SIMPLEX
+    ctx.font = '600 14px "Segoe UI", Arial, sans-serif';
     const textWidth = ctx.measureText(label).width;
     ctx.fillStyle = '#28dc78';
     ctx.fillRect(x1, Math.max(0, y1 - 18), textWidth + 8, 16);
@@ -859,6 +873,9 @@ startCam.onclick = async () => {
     if (liveIndicator) liveIndicator.style.display = 'inline';
 
     video.onloadedmetadata = () => {
+      // Store original video dimensions for proper scaling
+      originalVideoWidth = video.videoWidth;
+      originalVideoHeight = video.videoHeight;
       setOverlaySize();
       video.play();
     };
@@ -877,6 +894,8 @@ stopCam.onclick = () => {
   if (stream) stream.getTracks().forEach(t => t.stop());
   stream = null;
   isCameraActive = false;
+  originalVideoWidth = 0;
+  originalVideoHeight = 0;
   if (cameraContainer) cameraContainer.style.display = 'none';
   if (overlay) overlay.style.display = 'none';
   if (video) video.style.display = 'none';
