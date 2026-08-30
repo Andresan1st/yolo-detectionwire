@@ -1,16 +1,18 @@
 """
 Backend API untuk Copper Wire Branch Detection
-Dapat menerima gambar dari Laravel via base64 atau multipart
+WebRTC for low-latency webcam streaming + detection
 """
 
+import asyncio
 import base64
 import json
 import os
 import time
+import uuid
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from threading import Lock
-from typing import Optional
+from typing import Optional, Dict
 
 # Asia/Jakarta timezone (UTC+7)
 JAKARTA_TZ = timezone(timedelta(hours=7))
@@ -24,6 +26,15 @@ from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from ultralytics import YOLO
+
+# WebRTC support
+try:
+    from aiortc import RTCPeerConnection, VideoStreamTrack, MediaBlackhole
+    from aiortc.contrib.media import MediaRelay
+    WEBRTC_AVAILABLE = True
+except ImportError:
+    WEBRTC_AVAILABLE = False
+    VideoStreamTrack = None
 
 # Try to import database drivers
 PYODBC_AVAILABLE = False
@@ -43,6 +54,10 @@ except ImportError:
 
 load_dotenv()
 
+# WebRTC Configuration
+WEBRTC_PORT = int(os.getenv("WEBRTC_PORT", "8080"))
+STUN_SERVERS = os.getenv("STUN_SERVERS", "stun:stun.l.google.com:19302").split(",")
+
 ROOT = Path(__file__).resolve().parent.parent
 TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
 MODEL_PATH = Path(os.getenv("MODEL_PATH", "models/best.pt"))
@@ -52,6 +67,7 @@ CONFIDENCE = float(os.getenv("CONFIDENCE", "0.35"))
 IOU = float(os.getenv("IOU", "0.45"))
 DEVICE = os.getenv("DEVICE", "cpu")
 MAX_FRAME_WIDTH = int(os.getenv("MAX_FRAME_WIDTH", "1280"))
+DETECTION_INTERVAL = float(os.getenv("DETECTION_INTERVAL", "0.1"))  # 100ms default
 
 # Database Configuration
 DB_HOST = os.getenv("DB_HOST", "localhost")
@@ -59,6 +75,35 @@ DB_USER = os.getenv("DB_USER", "sa")
 DB_PASSWORD = os.getenv("DB_PASSWORD", "")
 DB_NAME = os.getenv("DB_NAME", "master")
 DB_TABLE = os.getenv("DB_TABLE", "machine_detection_copper")
+
+# WebRTC session management
+class DetectionSession:
+    """Manage WebRTC detection sessions"""
+    def __init__(self, session_id: str):
+        self.id = session_id
+        self.pc: Optional[RTCPeerConnection] = None
+        self.video_track = None
+        self.data_channel = None
+        self.last_frame_time = 0
+        self.frame_count = 0
+        self.active = True
+
+    async def send_detection_result(self, detections: list, count: int, annotated_frame=None):
+        """Send detection result via data channel"""
+        if self.data_channel and self.data_channel.readyState == "open":
+            result = {
+                "type": "detection",
+                "count": count,
+                "detections": detections,
+                "timestamp": time.time()
+            }
+            if annotated_frame is not None:
+                result["annotated_frame"] = base64.b64encode(annotated_frame).decode()
+            await self.data_channel.send(json.dumps(result))
+
+# Global session store
+_detection_sessions: Dict[str, DetectionSession] = {}
+_session_lock = Lock()
 
 app = FastAPI(
     title="Wire Branch Detection API",
@@ -163,6 +208,64 @@ def detect_in_image(frame: np.ndarray) -> tuple[list[dict], str]:
 
     annotated_base64 = base64.b64encode(encoded.tobytes()).decode("ascii")
     return detections, annotated_base64
+
+
+if WEBRTC_AVAILABLE:
+    class DetectionVideoTrack(VideoStreamTrack):
+        """
+        WebRTC Video Track that performs YOLO detection on each frame.
+        Runs detection at specified interval and returns annotated frames.
+        """
+        def __init__(self, session_id: str):
+            super().__init__()
+            self.session_id = session_id
+            self._queue = asyncio.Queue()
+            self._running = True
+            self._last_detection_time = 0
+            self._current_frame = None
+
+        async def recv(self, frame):
+            """Receive video frame, perform detection, return annotated frame"""
+            import av
+
+            pts, time_base = await self.next_timestamp()
+
+            # Convert frame to numpy for processing
+            img = frame.to_ndarray(format="bgr24")
+
+            # Store current frame for detection
+            self._current_frame = img
+
+            # Run detection at specified interval
+            current_time = time.time()
+            if current_time - self._last_detection_time >= DETECTION_INTERVAL:
+                self._last_detection_time = current_time
+
+                # Run detection
+                detections, annotated_base64 = detect_in_image(img)
+                count = len(detections)
+
+                # Send result to session
+                with _session_lock:
+                    session = _detection_sessions.get(self.session_id)
+
+                if session:
+                    # Convert annotated if available
+                    annotated_bytes = None
+                    if annotated_base64:
+                        annotated_bytes = base64.b64decode(annotated_base64)
+                    await session.send_detection_result(detections, count, annotated_bytes)
+
+            # Return the original frame (overlay will be drawn client-side)
+            # or annotated frame if we want server-side annotation
+            new_frame = av.VideoFrame.from_ndarray(img, format="bgr24")
+            new_frame.pts = pts
+            new_frame.time_base = time_base
+            return new_frame
+
+        def stop(self):
+            self._running = False
+            super().stop()
 
 
 # ==================== REQUEST/RESPONSE MODELS ====================
@@ -379,6 +482,127 @@ async def websocket_detect(websocket: WebSocket):
             })
         except RuntimeError:
             pass
+
+
+# ==================== WEBRTC ENDPOINTS ====================
+
+class WebRTCOfferRequest(BaseModel):
+    """Request for WebRTC offer"""
+    sdp: str
+    type: str
+    session_id: Optional[str] = None
+
+
+class WebRTCOfferResponse(BaseModel):
+    """Response for WebRTC offer"""
+    sdp: str
+    type: str
+    session_id: str
+
+
+@app.post("/api/webrtc/offer", response_model=WebRTCOfferResponse)
+async def webrtc_offer(request: WebRTCOfferRequest):
+    """
+    WebRTC signaling - receive SDP offer and return answer.
+    This establishes the peer connection for video streaming.
+    """
+    if not WEBRTC_AVAILABLE:
+        raise HTTPException(
+            status_code=503,
+            detail="WebRTC not available. Install aiortc: pip install aiortc"
+        )
+
+    session_id = request.session_id or str(uuid.uuid4())
+
+    # Create peer connection
+    pc = RTCPeerConnection()
+
+    # Create detection session
+    session = DetectionSession(session_id)
+    session.pc = pc
+    with _session_lock:
+        _detection_sessions[session_id] = session
+
+    # Create video track with detection
+    video_track = DetectionVideoTrack(session_id)
+
+    @pc.on("iceconnectionstatechange")
+    async def on_ice_connection_change():
+        if pc.iceConnectionState == "failed" or pc.iceConnectionState == "closed":
+            with _session_lock:
+                _detection_sessions.pop(session_id, None)
+
+    @pc.on("connectionstatechange")
+    async def on_connection_state_change():
+        if pc.connectionState == "failed" or pc.connectionState == "closed":
+            with _session_lock:
+                _detection_sessions.pop(session_id, None)
+
+    # Handle data channel for receiving commands
+    @pc.on("datachannel")
+    def on_datachannel(channel):
+        session.data_channel = channel
+
+        @channel.on("message")
+        async def on_message(message):
+            # Handle commands from client
+            if isinstance(message, str):
+                try:
+                    cmd = json.loads(message)
+                    if cmd.get("type") == "ping":
+                        await channel.send(json.dumps({"type": "pong", "timestamp": time.time()}))
+                except json.JSONDecodeError:
+                    pass
+
+    try:
+        # Process the offer
+        await pc.setRemoteDescription({
+            "type": request.type,
+            "sdp": request.sdp
+        })
+
+        # Add video track
+        pc.addTrack(video_track)
+
+        # Create answer
+        answer = await pc.createAnswer()
+        await pc.setLocalDescription(answer)
+
+        return WebRTCOfferResponse(
+            sdp=pc.localDescription.sdp,
+            type=pc.localDescription.type,
+            session_id=session_id
+        )
+
+    except Exception as e:
+        with _session_lock:
+            _detection_sessions.pop(session_id, None)
+        await pc.close()
+        raise HTTPException(
+            status_code=500,
+            detail=f"WebRTC error: {str(e)}"
+        )
+
+
+@app.get("/api/webrtc/ice-servers")
+async def get_ice_servers():
+    """Get ICE server configuration for WebRTC client"""
+    return {
+        "iceServers": [
+            {"urls": server.strip()}
+            for server in STUN_SERVERS
+        ]
+    }
+
+
+@app.post("/api/webrtc/close/{session_id}")
+async def webrtc_close(session_id: str):
+    """Close a WebRTC session"""
+    with _session_lock:
+        session = _detection_sessions.pop(session_id, None)
+        if session and session.pc:
+            await session.pc.close()
+    return {"success": True, "session_id": session_id}
 
 
 # ==================== BATCH DETECTION ====================
