@@ -1,0 +1,395 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Wire Branch Counter</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0f1419; color: #e7e9ea; min-height: 100vh; }
+    main { max-width: 1200px; margin: 0 auto; padding: 20px; }
+    header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 16px; border-bottom: 1px solid #2f3943; margin-bottom: 20px; flex-wrap: wrap; gap: 12px; }
+    h1 { font-size: 24px; font-weight: 700; }
+    .badge { padding: 6px 14px; border-radius: 16px; font-size: 12px; font-weight: 600; background: #242b33; }
+    .badge.connected { background: rgba(0,186,124,0.2); color: #00ba7c; }
+    .badge.disconnected { background: rgba(244,33,46,0.2); color: #f4212e; }
+    .count-display { background: #242b33; padding: 12px 24px; border-radius: 12px; text-align: center; margin-bottom: 16px; }
+    .count-number { font-size: 48px; font-weight: 800; color: #00ba7c; }
+    .count-label { color: #8899a6; font-size: 14px; }
+    .video-container { position: relative; background: #1a1f26; border-radius: 16px; overflow: hidden; min-height: 400px; display: flex; align-items: center; justify-content: center; }
+    .video-container video { max-width: 100%; max-height: 100%; display: block; }
+    .video-container canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+    .upload-area { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px; color: #8899a6; cursor: pointer; text-align: center; }
+    .upload-area:hover { background: rgba(0,186,124,0.1); }
+    .upload-icon { font-size: 64px; margin-bottom: 16px; }
+    .btn-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+    button { border: 0; border-radius: 8px; padding: 12px 20px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+    button.primary { background: #00ba7c; color: #000; }
+    button.primary:hover { background: #00d68f; }
+    button.secondary { background: #242b33; color: #e7e9ea; border: 1px solid #2f3943; }
+    button.secondary:hover { background: #2f3943; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .message { padding: 12px 16px; border-radius: 8px; margin-top: 16px; font-size: 14px; }
+    .message.info { background: rgba(29,155,240,0.1); color: #1d9bf0; }
+    .message.success { background: rgba(0,186,124,0.1); color: #00ba7c; }
+    .message.error { background: rgba(244,33,46,0.1); color: #f4212e; }
+    .loading { position: fixed; inset: 0; background: rgba(0,0,0,0.8); display: none; justify-content: center; align-items: center; z-index: 1000; flex-direction: column; gap: 16px; }
+    .loading.active { display: flex; }
+    .spinner { width: 48px; height: 48px; border: 4px solid #2f3943; border-top-color: #00ba7c; border-radius: 50%; animation: spin 1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .detection-list { margin-top: 16px; background: #1a1f26; border-radius: 12px; padding: 16px; display: none; }
+    .detection-list.show { display: block; }
+    .detection-item { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid #2f3943; }
+    .detection-item:last-child { border-bottom: none; }
+    .detection-num { width: 24px; height: 24px; background: #00ba7c; color: #000; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex-shrink: 0; }
+    .detection-label { font-weight: 600; }
+    .detection-conf { color: #8899a6; font-size: 12px; }
+    input[type="file"] { display: none; }
+    @media(max-width: 600px) { main { padding: 12px; } h1 { font-size: 20px; } .count-number { font-size: 36px; } .video-container { min-height: 280px; } }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1>🔌 Wire Branch Counter</h1>
+      <p style="color:#8899a6;margin-top:4px">Deteksi dan hitung kawat tembaga</p>
+    </div>
+    <div style="display:flex;gap:10px;">
+      <span class="badge" id="areaBadge">📍 Area: default</span>
+      <span class="badge" id="status">● Connecting...</span>
+    </div>
+  </header>
+
+  <div class="count-display">
+    <div class="count-number" id="countNum">0</div>
+    <div class="count-label">terdeteksi</div>
+  </div>
+
+  <div class="video-container" id="videoContainer">
+    <div class="upload-area" id="uploadArea">
+      <div class="upload-icon">📷</div>
+      <p>Aktifkan kamera atau upload gambar</p>
+    </div>
+    <video id="video" style="display:none" autoplay playsinline></video>
+    <canvas id="overlay"></canvas>
+    <input type="file" id="fileInput" accept="image/*">
+  </div>
+
+  <div class="btn-row">
+    <button class="primary" id="startBtn">🎥 Mulai Kamera</button>
+    <button class="secondary" id="stopBtn" disabled>⏹ Stop Kamera</button>
+    <button class="secondary" id="uploadBtn">📁 Upload</button>
+    <button class="secondary" id="saveBtn" disabled style="background:#1d9bf0;color:#fff">💾 Simpan</button>
+  </div>
+
+  <div class="message info" id="message">Aktifkan kamera atau upload gambar untuk memulai.</div>
+
+  <div class="detection-list" id="detectionList"></div>
+</main>
+
+<div class="loading" id="loading">
+  <div class="spinner"></div>
+  <div id="loadingText">Memproses...</div>
+</div>
+
+<script>
+// ==================== CONFIG ====================
+const API = window.location.origin;
+const AREA = window.location.pathname.split('/').filter(Boolean)[0] || 'default';
+document.getElementById('areaBadge').textContent = '📍 Area: ' + AREA;
+
+// ==================== STATE ====================
+let stream = null;
+let loopId = null;
+let isProcessing = false;
+let lastCount = 0;
+let lastDetections = [];
+
+// ==================== DOM ====================
+const video = document.getElementById('video');
+const overlay = document.getElementById('overlay');
+const uploadArea = document.getElementById('uploadArea');
+const fileInput = document.getElementById('fileInput');
+const startBtn = document.getElementById('startBtn');
+const stopBtn = document.getElementById('stopBtn');
+const uploadBtn = document.getElementById('uploadBtn');
+const saveBtn = document.getElementById('saveBtn');
+const countNum = document.getElementById('countNum');
+const message = document.getElementById('message');
+const detectionList = document.getElementById('detectionList');
+const loading = document.getElementById('loading');
+const loadingText = document.getElementById('loadingText');
+const videoContainer = document.getElementById('videoContainer');
+
+// ==================== UTILS ====================
+function setMsg(text, type = 'info') {
+  message.textContent = text;
+  message.className = 'message ' + type;
+}
+
+function showLoading(text) {
+  loadingText.textContent = text || 'Memproses...';
+  loading.classList.add('active');
+}
+
+function hideLoading() {
+  loading.classList.remove('active');
+}
+
+// ==================== API ====================
+async function detectAPI(imageBase64) {
+  const res = await fetch(API + '/api/detect', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ image: imageBase64 })
+  });
+  return res.json();
+}
+
+// ==================== DRAW ====================
+function drawBoxes(detections, nativeW, nativeH) {
+  const canvas = overlay;
+  const ctx = canvas.getContext('2d');
+
+  // Set overlay size to match container
+  const rect = videoContainer.getBoundingClientRect();
+  canvas.width = rect.width;
+  canvas.height = rect.height;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  const scaleX = canvas.width / nativeW;
+  const scaleY = canvas.height / nativeH;
+
+  detections.forEach((det, i) => {
+    const [x1, y1, x2, y2] = det.bbox;
+    const sx1 = x1 * scaleX;
+    const sy1 = y1 * scaleY;
+    const sx2 = x2 * scaleX;
+    const sy2 = y2 * scaleY;
+
+    // Box
+    ctx.strokeStyle = '#FF0000';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(sx1, sy1, sx2 - sx1, sy2 - sy1);
+
+    // Label
+    const label = `${det.label} ${(det.confidence * 100).toFixed(0)}%`;
+    ctx.fillStyle = '#FF0000';
+    ctx.font = 'bold 12px sans-serif';
+    ctx.fillRect(sx1, sy1 - 18, ctx.measureText(label).width + 8, 18);
+    ctx.fillStyle = '#FFF';
+    ctx.fillText(label, sx1 + 4, sy1 - 4);
+  });
+}
+
+function showDetections(detections) {
+  if (!detections.length) {
+    detectionList.classList.remove('show');
+    return;
+  }
+
+  detectionList.innerHTML = detections.map((d, i) => `
+    <div class="detection-item">
+      <div class="detection-num">${i + 1}</div>
+      <div>
+        <div class="detection-label">${d.label}</div>
+        <div class="detection-conf">Confidence: ${(d.confidence * 100).toFixed(1)}%</div>
+      </div>
+    </div>
+  `).join('');
+
+  detectionList.classList.add('show');
+}
+
+// ==================== DETECT ====================
+async function detect(imageBase64) {
+  try {
+    const result = await detectAPI(imageBase64);
+
+    if (!result.success) {
+      throw new Error(result.detail || 'Detection failed');
+    }
+
+    lastDetections = result.detections;
+    lastCount = result.count;
+    countNum.textContent = result.count;
+
+    drawBoxes(result.detections, result.image_width, result.image_height);
+    showDetections(result.detections);
+
+    if (result.count > 0) {
+      setMsg(`✅ ${result.count} objek terdeteksi`, 'success');
+      saveBtn.disabled = false;
+    } else {
+      setMsg('Tidak ada objek terdeteksi', 'info');
+    }
+  } catch (e) {
+    console.error('Detect error:', e);
+    setMsg('❌ ' + e.message, 'error');
+  }
+}
+
+// ==================== WEBCAM ====================
+startBtn.onclick = async () => {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+    video.srcObject = stream;
+    video.style.display = 'block';
+    uploadArea.style.display = 'none';
+
+    startBtn.disabled = true;
+    stopBtn.disabled = false;
+
+    await new Promise(r => video.onloadedmetadata = r);
+    startLoop();
+    setMsg('📹 Kamera aktif', 'success');
+  } catch (e) {
+    setMsg('❌ Gagal akses kamera: ' + e.message, 'error');
+  }
+};
+
+stopBtn.onclick = () => {
+  stopLoop();
+  if (stream) {
+    stream.getTracks().forEach(t => t.stop());
+    stream = null;
+  }
+  video.srcObject = null;
+  video.style.display = 'none';
+  uploadArea.style.display = 'flex';
+  overlay.getContext('2d').clearRect(0, 0, overlay.width, overlay.height);
+  startBtn.disabled = false;
+  stopBtn.disabled = true;
+  setMsg(`⏹ Kamera berhenti. Total: ${lastCount} objek.`, 'info');
+};
+
+function startLoop() {
+  async function frame() {
+    if (!stream) return;
+
+    if (!isProcessing) {
+      isProcessing = true;
+
+      try {
+        const c = document.createElement('canvas');
+        c.width = video.videoWidth;
+        c.height = video.videoHeight;
+        c.getContext('2d').drawImage(video, 0, 0);
+
+        const base64 = c.toDataURL('image/jpeg').split(',')[1];
+        await detect(base64);
+      } catch (e) {
+        console.error('Frame error:', e);
+      }
+
+      isProcessing = false;
+    }
+
+    loopId = requestAnimationFrame(frame);
+  }
+
+  frame();
+}
+
+function stopLoop() {
+  if (loopId) {
+    cancelAnimationFrame(loopId);
+    loopId = null;
+  }
+}
+
+// ==================== UPLOAD ====================
+uploadBtn.onclick = () => fileInput.click();
+uploadArea.onclick = () => fileInput.click();
+
+fileInput.onchange = async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  e.target.value = '';
+
+  if (stream) stopBtn.click();
+
+  showLoading('🔍 Menganalisis...');
+
+  try {
+    const base64 = await new Promise(resolve => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result.split(',')[1]);
+      reader.readAsDataURL(file);
+    });
+
+    // Display image
+    const img = new Image();
+    img.onload = async () => {
+      const c = document.createElement('canvas');
+      c.width = img.width;
+      c.height = img.height;
+      c.getContext('2d').drawImage(img, 0, 0);
+
+      // Show image in video element
+      video.src = c.toDataURL();
+      video.style.display = 'block';
+      uploadArea.style.display = 'none';
+
+      await detect(base64);
+      hideLoading();
+    };
+    img.src = 'data:image/jpeg;base64,' + base64;
+  } catch (e) {
+    hideLoading();
+    setMsg('❌ ' + e.message, 'error');
+  }
+};
+
+// ==================== SAVE ====================
+saveBtn.onclick = async () => {
+  if (lastCount <= 0) {
+    setMsg('⚠️ Tidak ada data', 'error');
+    return;
+  }
+
+  const now = new Date();
+  const jakarta = new Date(now.getTime() + (7 * 60 - now.getTimezoneOffset()) * 60000);
+  const dt_ins = jakarta.toISOString().split('T')[0];
+  const seq_time = jakarta.toISOString().replace('T', ' ').split('.')[0];
+
+  saveBtn.disabled = true;
+  showLoading('💾 Menyimpan...');
+
+  try {
+    const res = await fetch(API + '/api/save?area=' + AREA + '&countc=' + lastCount + '&dt_ins=' + dt_ins + '&seq_time=' + seq_time);
+    const result = await res.json();
+
+    if (result.success) {
+      setMsg('✅ Tersimpan! ID: ' + result.id, 'success');
+      alert('Berhasil!\nID: ' + result.id + '\nJumlah: ' + lastCount + '\nArea: ' + AREA);
+    } else {
+      throw new Error(result.detail);
+    }
+  } catch (e) {
+    setMsg('❌ Gagal: ' + e.message, 'error');
+  }
+
+  hideLoading();
+  saveBtn.disabled = false;
+};
+
+// ==================== HEALTH ====================
+async function checkHealth() {
+  try {
+    const res = await fetch(API + '/health');
+    if (res.ok) {
+      document.getElementById('status').textContent = '● Connected';
+      document.getElementById('status').className = 'badge connected';
+    }
+  } catch {
+    document.getElementById('status').textContent = '○ Disconnected';
+    document.getElementById('status').className = 'badge disconnected';
+  }
+}
+checkHealth();
+setInterval(checkHealth, 10000);
+</script>
+</body>
+</html>
