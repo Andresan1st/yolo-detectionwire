@@ -1,4 +1,4 @@
-<!doctype html>
+=<!doctype html>
 <html lang="id">
 <head>
   <meta charset="utf-8">
@@ -363,7 +363,7 @@ const CLASS_NAMES = ['wire', 'branch', 'junction']; // Ganti sesuai model
 
 // Model configuration
 const MODEL_URL = '/best.onnx';
-const INPUT_SIZE = 704;
+const INPUT_SIZE = 1280;
 const CONFIDENCE_THRESHOLD = 0.35;
 const IOU_THRESHOLD = 0.55;
 
@@ -458,24 +458,25 @@ async function runInference(inputTensor) {
   }
 }
 
-// Post-process YOLO output (YOLOv8 format: [1, 84, 8400])
+// Post-process YOLO output (YOLOv8 format: [1, 84, N])
 function postprocessYOLO(output, scale, imgWidth, imgHeight) {
   const detections = [];
 
-  // YOLOv8 output shape: [1, 84, 8400] where:
+  // YOLOv8 output shape: [1, 84, N] where:
   // 84 = 4 (bbox: x, y, w, h) + 80 (classes)
-  // For custom model with 1 class: 84 = 4 + 1 = 5
+  // For custom model with fewer classes: numValuesPerPred = 4 + numClasses
+  // N (number of predictions/anchors) scales with INPUT_SIZE, e.g. ~33600 at 1280
   const outputData = output.data;
-  const dims = output.dims; // [1, 84, 8400] or [1, 5, 8400]
+  const dims = output.dims; // [1, numValuesPerPred, N]
 
   if (dims.length !== 3) {
     console.error('Unexpected output shape:', dims);
     return detections;
   }
 
-  const numPredictions = dims[2]; // 8400
-  const numValuesPerPred = dims[1]; // 84 or 5
-  const numClasses = numValuesPerPred - 4; // 80 or 1
+  const numPredictions = dims[2]; // N, read dynamically from model output
+  const numValuesPerPred = dims[1];
+  const numClasses = numValuesPerPred - 4;
 
   for (let i = 0; i < numPredictions; i++) {
     // Get box coordinates (first 4 values)
