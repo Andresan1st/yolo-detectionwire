@@ -3,1035 +3,3583 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+
   <title>Wire Branch Counter</title>
+
   <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.17.0/dist/ort.min.js"></script>
+
   <style>
-    * { box-sizing: border-box; }
+    * {
+      box-sizing: border-box;
+    }
+
     :root {
       color-scheme: dark;
+
       font-family: 'Segoe UI', system-ui, sans-serif;
+
       --bg-primary: #0f1419;
       --bg-card: #1a1f26;
       --bg-input: #242b33;
+
       --text-primary: #e7e9ea;
       --text-secondary: #8899a6;
+
       --accent: #1d9bf0;
       --accent-green: #00ba7c;
       --accent-orange: #ff7a00;
       --accent-red: #f4212e;
+
       --border: #2f3943;
     }
+
     body {
       margin: 0;
       min-height: 100vh;
+
       background: var(--bg-primary);
       color: var(--text-primary);
     }
+
     main {
       max-width: 1200px;
       margin: 0 auto;
       padding: 24px;
     }
+
     header {
       display: flex;
       justify-content: space-between;
       align-items: center;
+
       margin-bottom: 24px;
       padding-bottom: 16px;
+
       border-bottom: 1px solid var(--border);
     }
-    h1 { margin: 0; font-size: 28px; font-weight: 700; }
-    .subtitle { margin: 4px 0 0; color: var(--text-secondary); font-size: 14px; }
+
+    h1 {
+      margin: 0;
+      font-size: 28px;
+      font-weight: 700;
+    }
+
+    .subtitle {
+      margin: 4px 0 0;
+
+      color: var(--text-secondary);
+      font-size: 14px;
+    }
+
     .badge {
       padding: 8px 16px;
+
       border-radius: 20px;
+
       font-size: 13px;
       font-weight: 600;
+
       background: var(--bg-input);
       color: var(--text-secondary);
     }
-    .badge.connected { background: rgba(0, 186, 124, 0.2); color: var(--accent-green); }
-    .badge.disconnected { background: rgba(244, 33, 46, 0.2); color: var(--accent-red); }
 
-    .grid { display: grid; grid-template-columns: 1fr; gap: 20px; }
+    .badge.connected {
+      background: rgba(0, 186, 124, 0.2);
+      color: var(--accent-green);
+    }
 
-    @media (max-width: 600px) {
-      main { padding: 12px; }
-      .stats { flex-direction: column; align-items: flex-start; }
-      .number { font-size: 36px; }
-      .btn-group { flex-wrap: wrap; }
-      .btn-group button { flex: 1; min-width: 120px; }
-      .card-body { min-height: 280px; }
-      .card-header { padding: 12px 16px; }
-      .card-footer { padding: 12px 16px; }
-      h1 { font-size: 22px; }
-      .message { font-size: 12px; padding: 10px 12px; }
-      header { flex-direction: column; align-items: flex-start; gap: 10px; }
-      header > div:last-child { flex-wrap: wrap; }
+    .badge.disconnected {
+      background: rgba(244, 33, 46, 0.2);
+      color: var(--accent-red);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr;
+
+      gap: 20px;
     }
 
     .card {
       border: 1px solid var(--border);
       border-radius: 16px;
+
       background: var(--bg-card);
+
       overflow: hidden;
+
       max-width: 100%;
     }
+
     .card-header {
       padding: 16px 20px;
+
       border-bottom: 1px solid var(--border);
+
       display: flex;
       justify-content: space-between;
       align-items: center;
     }
-    .card-header h2 { margin: 0; font-size: 16px; font-weight: 600; }
+
+    .card-header h2 {
+      margin: 0;
+
+      font-size: 16px;
+      font-weight: 600;
+    }
+
     .card-body {
       aspect-ratio: 16 / 9;
+
       background: var(--bg-input);
-      display: flex;
-      align-items: center;
-      justify-content: center;
+
       position: relative;
-      min-height: 400px;
+
       width: 100%;
+
+      min-height: 400px;
+
       overflow: hidden;
     }
-    .card-body canvas {
+
+    .camera-container,
+    .upload-container {
+      position: absolute;
+
+      inset: 0;
+
       width: 100%;
       height: 100%;
-      object-fit: contain;
     }
-    .card-footer { padding: 16px 20px; }
+
+    #webcamVideo {
+      width: 100%;
+      height: 100%;
+
+      object-fit: contain;
+
+      display: block;
+    }
+
+    #overlayCanvas,
+    #uploadOverlay {
+      position: absolute;
+
+      top: 0;
+      left: 0;
+
+      width: 100%;
+      height: 100%;
+
+      pointer-events: none;
+    }
+
+    #uploadCanvas {
+      width: 100%;
+      height: 100%;
+
+      object-fit: contain;
+
+      display: block;
+    }
 
     .upload-area {
+      position: absolute;
+
+      inset: 0;
+
+      display: flex;
+
+      flex-direction: column;
+
+      align-items: center;
+      justify-content: center;
+
       text-align: center;
+
       color: var(--text-secondary);
+
       padding: 20px;
+
+      cursor: pointer;
+
+      transition: background 0.2s;
     }
-    .upload-area p { margin: 0 0 12px; }
-    .upload-icon { font-size: 48px; margin-bottom: 12px; opacity: 0.5; }
+
+    .upload-area.dragover {
+      background: rgba(0, 186, 124, 0.1);
+    }
+
+    .upload-area p {
+      margin: 0 0 12px;
+    }
+
+    .upload-icon {
+      font-size: 48px;
+
+      margin-bottom: 12px;
+
+      opacity: 0.5;
+    }
+
+    .card-footer {
+      padding: 16px 20px;
+    }
 
     button {
       border: 0;
+
       border-radius: 8px;
+
       padding: 12px 20px;
+
       font-size: 14px;
       font-weight: 600;
+
       cursor: pointer;
+
       transition: all 0.2s;
     }
-    button.primary { background: var(--accent-green); color: #000; }
-    button.primary:hover { background: #00d68f; }
-    button.secondary { background: var(--bg-input); color: var(--text-primary); border: 1px solid var(--border); }
-    button.secondary:hover { background: var(--border); }
-    button:disabled { opacity: 0.5; cursor: not-allowed; }
-    .btn-group { display: flex; gap: 10px; }
+
+    button.primary {
+      background: var(--accent-green);
+      color: #000;
+    }
+
+    button.primary:hover {
+      background: #00d68f;
+    }
+
+    button.secondary {
+      background: var(--bg-input);
+      color: var(--text-primary);
+
+      border: 1px solid var(--border);
+    }
+
+    button.secondary:hover {
+      background: var(--border);
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .btn-group {
+      display: flex;
+
+      gap: 10px;
+
+      flex-wrap: wrap;
+    }
 
     .stats {
       display: flex;
+
       align-items: center;
+
       gap: 12px;
+
       padding: 20px;
+
       background: var(--bg-input);
+
       border-radius: 12px;
+
       margin-bottom: 16px;
     }
-    .number { font-size: 48px; font-weight: 800; color: var(--accent-green); line-height: 1; min-width: 60px; }
-    .number-label { color: var(--text-secondary); font-size: 14px; }
+
+    .number {
+      font-size: 48px;
+
+      font-weight: 800;
+
+      color: var(--accent-green);
+
+      line-height: 1;
+
+      min-width: 60px;
+    }
+
+    .number-label {
+      color: var(--text-secondary);
+
+      font-size: 14px;
+    }
 
     .message {
       padding: 12px 16px;
+
       border-radius: 8px;
+
       font-size: 14px;
+
       margin-bottom: 16px;
     }
-    .message.info { background: rgba(29, 155, 240, 0.1); color: var(--accent); }
-    .message.success { background: rgba(0, 186, 124, 0.1); color: var(--accent-green); }
-    .message.error { background: rgba(244, 33, 46, 0.1); color: var(--accent-red); }
-    .message.warning { background: rgba(255, 122, 0, 0.1); color: var(--accent-orange); }
+
+    .message.info {
+      background: rgba(29, 155, 240, 0.1);
+
+      color: var(--accent);
+    }
+
+    .message.success {
+      background: rgba(0, 186, 124, 0.1);
+
+      color: var(--accent-green);
+    }
+
+    .message.error {
+      background: rgba(244, 33, 46, 0.1);
+
+      color: var(--accent-red);
+    }
+
+    .message.warning {
+      background: rgba(255, 122, 0, 0.1);
+
+      color: var(--accent-orange);
+    }
 
     .detections-panel {
       background: var(--bg-input);
+
       border-radius: 12px;
+
       padding: 16px;
+
+      margin-top: 16px;
     }
+
     .detections-header {
       font-size: 14px;
+
       font-weight: 600;
+
       margin-bottom: 12px;
+
       color: var(--text-secondary);
     }
+
     .detection-item {
       display: flex;
+
       align-items: center;
+
       gap: 12px;
+
       padding: 10px 0;
+
       border-bottom: 1px solid var(--border);
     }
-    .detection-item:last-child { border-bottom: none; }
+
+    .detection-item:last-child {
+      border-bottom: none;
+    }
+
     .detection-num {
       width: 28px;
       height: 28px;
+
       background: var(--accent-green);
+
       color: #000;
+
       border-radius: 50%;
+
       display: flex;
+
       align-items: center;
       justify-content: center;
+
       font-size: 13px;
+
       font-weight: 700;
+
       flex-shrink: 0;
     }
-    .detection-info { flex: 1; }
-    .detection-label { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
-    .detection-meta { font-size: 12px; color: var(--text-secondary); }
+
+    .detection-info {
+      flex: 1;
+    }
+
+    .detection-label {
+      font-size: 14px;
+
+      font-weight: 600;
+
+      margin-bottom: 4px;
+    }
+
+    .detection-meta {
+      font-size: 12px;
+
+      color: var(--text-secondary);
+    }
+
     .confidence-bar {
       width: 100px;
       height: 8px;
+
       background: var(--border);
+
       border-radius: 4px;
+
       overflow: hidden;
     }
+
     .confidence-fill {
       height: 100%;
-      background: var(--accent-green);
-      border-radius: 4px;
-      transition: width 0.3s;
-    }
-    .confidence-fill.high { background: var(--accent-green); }
-    .confidence-fill.medium { background: var(--accent-orange); }
-    .confidence-fill.low { background: var(--accent-red); }
 
-    .no-detections { text-align: center; padding: 20px; color: var(--text-secondary); }
-    input[type="file"] { display: none; }
+      background: var(--accent-green);
+
+      border-radius: 4px;
+    }
+
+    .no-detections {
+      text-align: center;
+
+      padding: 20px;
+
+      color: var(--text-secondary);
+    }
+
+    input[type="file"] {
+      display: none;
+    }
 
     .loading-overlay {
       position: fixed;
+
       top: 0;
       left: 0;
+
       width: 100%;
       height: 100%;
+
       background: rgba(0, 0, 0, 0.8);
+
       display: none;
+
       justify-content: center;
       align-items: center;
+
       z-index: 1000;
+
       flex-direction: column;
+
       gap: 20px;
     }
-    .loading-overlay.active { display: flex; }
+
+    .loading-overlay.active {
+      display: flex;
+    }
+
     .loading-spinner {
       width: 60px;
       height: 60px;
+
       border: 4px solid var(--border);
+
       border-top-color: var(--accent-green);
+
       border-radius: 50%;
+
       animation: spin 1s linear infinite;
     }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    .loading-text { color: var(--text-primary); font-size: 18px; font-weight: 600; }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    .loading-text {
+      color: var(--text-primary);
+
+      font-size: 18px;
+
+      font-weight: 600;
+
+      text-align: center;
+
+      padding: 0 20px;
+    }
 
     .popup-overlay {
       position: fixed;
+
       top: 0;
       left: 0;
+
       width: 100%;
       height: 100%;
+
       background: rgba(0, 0, 0, 0.6);
+
       display: none;
+
       justify-content: center;
       align-items: center;
+
       z-index: 1001;
     }
-    .popup-overlay.active { display: flex; }
+
+    .popup-overlay.active {
+      display: flex;
+    }
+
     .popup {
       background: var(--bg-card);
+
       border: 1px solid var(--border);
+
       border-radius: 16px;
+
       padding: 32px;
+
       text-align: center;
+
       max-width: 400px;
+
       width: 90%;
+
       animation: popupIn 0.3s ease;
     }
+
     @keyframes popupIn {
-      from { opacity: 0; transform: scale(0.8); }
-      to { opacity: 1; transform: scale(1); }
+      from {
+        opacity: 0;
+        transform: scale(0.8);
+      }
+
+      to {
+        opacity: 1;
+        transform: scale(1);
+      }
     }
-    .popup-icon { font-size: 64px; margin-bottom: 16px; }
-    .popup-title { font-size: 24px; font-weight: 700; margin-bottom: 8px; }
-    .popup-message { color: var(--text-secondary); font-size: 14px; margin-bottom: 24px; line-height: 1.5; white-space: pre-line; }
+
+    .popup-icon {
+      font-size: 64px;
+
+      margin-bottom: 16px;
+    }
+
+    .popup-title {
+      font-size: 24px;
+
+      font-weight: 700;
+
+      margin-bottom: 8px;
+    }
+
+    .popup-message {
+      color: var(--text-secondary);
+
+      font-size: 14px;
+
+      margin-bottom: 24px;
+
+      line-height: 1.5;
+
+      white-space: pre-line;
+    }
+
     .popup-btn {
       padding: 12px 32px;
-      border-radius: 8px;
-      border: none;
-      font-size: 14px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.2s;
-    }
-    .popup-btn.success { background: var(--accent-green); color: #000; }
-    .popup-btn.success:hover { background: #00d68f; }
 
-    #modelStatus { font-size: 12px; }
-    .model-loading { color: var(--accent-orange); }
-    .model-ready { color: var(--accent-green); }
-    .model-error { color: var(--accent-red); }
+      border-radius: 8px;
+
+      border: none;
+
+      font-size: 14px;
+
+      font-weight: 600;
+
+      cursor: pointer;
+    }
+
+    .popup-btn.success {
+      background: var(--accent-green);
+
+      color: #000;
+    }
+
+    .model-loading {
+      color: var(--accent-orange);
+    }
+
+    .model-ready {
+      color: var(--accent-green);
+    }
+
+    .model-error {
+      color: var(--accent-red);
+    }
+
+    @media (max-width: 700px) {
+
+      main {
+        padding: 12px;
+      }
+
+      header {
+        flex-direction: column;
+
+        align-items: flex-start;
+
+        gap: 12px;
+      }
+
+      header > div:last-child {
+        flex-wrap: wrap;
+      }
+
+      h1 {
+        font-size: 22px;
+      }
+
+      .card-body {
+        min-height: 280px;
+      }
+
+      .card-header {
+        padding: 12px 16px;
+      }
+
+      .card-footer {
+        padding: 12px 16px;
+      }
+
+      .number {
+        font-size: 36px;
+      }
+    }
   </style>
 </head>
+
 <body>
+
 <main>
+
   <header>
+
     <div>
       <h1>🔌 Wire Branch Counter</h1>
-      <p class="subtitle">Deteksi dan hitung kawat tembaga bercabang secara real-time</p>
+
+      <p class="subtitle">
+        Deteksi dan hitung kawat tembaga bercabang secara real-time
+      </p>
     </div>
+
     <div style="display:flex; gap:10px; align-items:center;">
-      <span class="badge" style="background:var(--accent); color:#fff;" id="areaBadge">📍 Area: default</span>
-      <span class="badge" id="status">Connecting...</span>
-      <span class="badge" id="modelStatus">🤖 Model: Loading...</span>
+
+      <span
+        class="badge"
+        style="background:var(--accent); color:#fff;"
+        id="areaBadge">
+        📍 Area: default
+      </span>
+
+      <span
+        class="badge"
+        id="status">
+        Connecting...
+      </span>
+
+      <span
+        class="badge"
+        id="modelStatus">
+        🤖 Model: Loading...
+      </span>
+
     </div>
+
   </header>
 
+
   <section class="grid">
+
     <article class="card">
+
       <div class="card-header">
+
         <h2>📷 Webcam Live</h2>
+
         <div style="display:flex; align-items:center; gap:16px;">
+
           <div style="display:flex; align-items:center; gap:8px;">
-            <span class="number" id="count" style="font-size:28px;">0</span>
-            <span class="number-label">terdeteksi</span>
+
+            <span
+              class="number"
+              id="count"
+              style="font-size:28px;">
+              0
+            </span>
+
+            <span class="number-label">
+              terdeteksi
+            </span>
+
           </div>
-          <span id="liveIndicator" class="badge" style="display:none; font-size:12px;">● LIVE</span>
+
+          <span
+            id="liveIndicator"
+            class="badge"
+            style="display:none; font-size:12px;">
+            ● LIVE
+          </span>
+
         </div>
+
       </div>
-      <div class="card-body" id="inputStage">
-        <div id="cameraContainer" style="display:none; position:relative; width:100%; height:100%; background:#242b33;">
-          <video id="webcamVideo" autoplay playsinline style="width:100%; height:100%; object-fit:contain;"></video>
-          <canvas id="overlayCanvas" style="position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none;"></canvas>
+
+
+      <div
+        class="card-body"
+        id="inputStage">
+
+        <!-- CAMERA -->
+
+        <div
+          id="cameraContainer"
+          class="camera-container"
+          style="display:none;">
+
+          <video
+            id="webcamVideo"
+            autoplay
+            playsinline>
+          </video>
+
+          <canvas
+            id="overlayCanvas">
+          </canvas>
+
         </div>
-        <div class="upload-area" id="uploadArea">
-          <div class="upload-icon">📁</div>
-          <p>Drag & drop gambar di sini</p>
+
+
+        <!-- UPLOAD -->
+
+        <div
+          id="uploadContainer"
+          class="upload-container"
+          style="display:none;">
+
+          <canvas id="uploadCanvas"></canvas>
+
+          <canvas id="uploadOverlay"></canvas>
+
         </div>
-        <div id="uploadContainer" style="display:none; position:relative; width:100%; height:100%;">
-          <canvas id="uploadCanvas" style="width:100%; height:100%; object-fit:contain;"></canvas>
-          <canvas id="uploadOverlay" style="position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none;"></canvas>
+
+
+        <!-- DROP AREA -->
+
+        <div
+          class="upload-area"
+          id="uploadArea">
+
+          <div class="upload-icon">
+            📁
+          </div>
+
+          <p>
+            Drag & drop gambar di sini
+          </p>
+
+          <small>
+            atau klik "Pilih File"
+          </small>
+
         </div>
-        <input type="file" id="fileInput" accept="image/*">
+
+
+        <input
+          type="file"
+          id="fileInput"
+          accept="image/*">
+
       </div>
+
+
       <div class="card-footer">
-        <div class="btn-group" style="flex-wrap: wrap; gap: 8px;">
-          <button class="secondary" id="uploadBtn" disabled>📁 Pilih File</button>
-          <button class="secondary" id="stopCam" disabled>⏹ Berhenti</button>
-          <button class="primary" id="startCam" disabled>🎥 Aktifkan Kamera</button>
-          <button class="secondary" id="saveDbBtn" disabled style="background: var(--accent); color: #fff;">💾 Simpan ke DB</button>
+
+        <div class="btn-group">
+
+          <button
+            class="secondary"
+            id="uploadBtn"
+            disabled>
+            📁 Pilih File
+          </button>
+
+          <button
+            class="secondary"
+            id="stopCam"
+            disabled>
+            ⏹ Berhenti
+          </button>
+
+          <button
+            class="primary"
+            id="startCam"
+            disabled>
+            🎥 Aktifkan Kamera
+          </button>
+
+          <button
+            class="secondary"
+            id="saveDbBtn"
+            disabled
+            style="background:var(--accent); color:#fff;">
+            💾 Simpan ke DB
+          </button>
+
         </div>
-        <div class="detections-panel" id="detectionsPanel" style="display:none; margin-top:16px;">
-          <div class="detections-header">📋 Detail Deteksi</div>
+
+
+        <div
+          class="detections-panel"
+          id="detectionsPanel"
+          style="display:none;">
+
+          <div class="detections-header">
+            📋 Detail Deteksi
+          </div>
+
           <div id="detectionsList"></div>
+
         </div>
+
       </div>
+
     </article>
-    <div class="message info" id="message">⏳ Memuat model AI, mohon tunggu...</div>
+
+
+    <div
+      class="message info"
+      id="message">
+
+      ⏳ Memuat model AI, mohon tunggu...
+
+    </div>
+
   </section>
+
 </main>
 
-<!-- Loading Overlay -->
-<div class="loading-overlay" id="loadingOverlay">
+
+<!-- LOADING -->
+
+<div
+  class="loading-overlay"
+  id="loadingOverlay">
+
   <div class="loading-spinner"></div>
-  <div class="loading-text" id="loadingText">Memproses gambar...</div>
+
+  <div
+    class="loading-text"
+    id="loadingText">
+    Memproses gambar...
+  </div>
+
 </div>
 
-<!-- Popup Notification -->
-<div class="popup-overlay" id="popupOverlay">
+
+<!-- POPUP -->
+
+<div
+  class="popup-overlay"
+  id="popupOverlay">
+
   <div class="popup">
-    <div class="popup-icon" id="popupIcon">✅</div>
-    <div class="popup-title" id="popupTitle">Berhasil!</div>
-    <div class="popup-message" id="popupMessage">Data berhasil disimpan ke database.</div>
-    <button class="popup-btn success" id="popupBtn" onclick="closePopup()">OK</button>
+
+    <div
+      class="popup-icon"
+      id="popupIcon">
+      ✅
+    </div>
+
+    <div
+      class="popup-title"
+      id="popupTitle">
+      Berhasil!
+    </div>
+
+    <div
+      class="popup-message"
+      id="popupMessage">
+      Data berhasil disimpan ke database.
+    </div>
+
+    <button
+      class="popup-btn success"
+      id="popupBtn">
+      OK
+    </button>
+
   </div>
+
 </div>
+
 
 <script>
-// ==================== ONNX Runtime Web Setup ====================
+
+/* =========================================================
+   CONFIG
+========================================================= */
+
+const MODEL_URL = '/best.onnx';
+
+const INPUT_SIZE = 1280;
+
+const CONFIDENCE_THRESHOLD = 0.35;
+
+const IOU_THRESHOLD = 0.45;
+
+const MODEL_LOAD_TIMEOUT = 120000;
+
+const CAMERA_WIDTH = 640;
+
+const CAMERA_HEIGHT = 480;
+
+
+/* =========================================================
+   YOLO CLASS
+========================================================= */
+
+const CLASS_NAMES = [
+  'element_copper'
+];
+
+
+/* =========================================================
+   GLOBAL
+========================================================= */
+
 let session = null;
+
 let isModelReady = false;
 
-// YOLO class names (sesuaikan dengan model kamu)
-const CLASS_NAMES = ['element_copper']; // Ganti sesuai model
-
-// Model configuration
-const MODEL_URL = '/best.onnx';
-const INPUT_SIZE = 1280;
-const CONFIDENCE_THRESHOLD = 0.35;
-const IOU_THRESHOLD = 0.45;
-const MODEL_LOAD_TIMEOUT = 120000; // 2 menit — model 1280 jauh lebih besar dari 640/704
-
-async function loadONNXModel() {
-  const modelStatus = document.getElementById('modelStatus');
-  modelStatus.textContent = '🤖 Model: Loading...';
-  modelStatus.className = 'badge model-loading';
-  isModelReady = false;
-  startCam.disabled = true;
-  uploadBtn.disabled = true;
-  setMessage('⏳ Memuat model AI, mohon tunggu...', 'info');
-  showLoading('🔍 Mengunduh model AI...');
-
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), MODEL_LOAD_TIMEOUT);
-
-  try {
-    // WASM multi-thread butuh SharedArrayBuffer, yang hanya aktif kalau halaman
-    // cross-origin isolated (header COOP/COEP di-set di server). Kalau tidak,
-    // paksa single-thread supaya tidak hang/gagal diam-diam.
-    const isolated = typeof self !== 'undefined' && self.crossOriginIsolated === true;
-    ort.env.wasm.numThreads = isolated ? (navigator.hardwareConcurrency || 4) : 1;
-    ort.env.wasm.loggingLevel = 'error';
-    if (!isolated) {
-      console.warn('Halaman belum cross-origin isolated (COOP/COEP belum diset di server). WASM jalan single-thread → inference lebih lambat, tapi lebih stabil.');
-    }
-
-    console.log('Mengunduh model ONNX dari:', MODEL_URL);
-
-    // Fetch manual (bukan langsung ort.InferenceSession.create(url)) supaya
-    // progres unduhan bisa ditampilkan ke user, bukan cuma teks "Loading...".
-    const response = await fetch(MODEL_URL, { signal: controller.signal, cache: 'force-cache' });
-    if (!response.ok) {
-      throw new Error(`HTTP_${response.status}`);
-    }
-
-    const contentLength = response.headers.get('content-length');
-    const total = contentLength ? parseInt(contentLength, 10) : 0;
-    let loaded = 0;
-    const chunks = [];
-    const reader = response.body.getReader();
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      chunks.push(value);
-      loaded += value.length;
-      const loadedMB = (loaded / 1048576).toFixed(1);
-      if (total) {
-        const pct = Math.min(100, Math.round((loaded / total) * 100));
-        showLoading(`🔍 Mengunduh model AI... ${pct}% (${loadedMB} MB)`);
-        modelStatus.textContent = `🤖 Model: ${pct}%`;
-      } else {
-        showLoading(`🔍 Mengunduh model AI... ${loadedMB} MB`);
-      }
-    }
-
-    clearTimeout(timeoutId);
-
-    const modelBytes = new Uint8Array(loaded);
-    let offset = 0;
-    for (const chunk of chunks) {
-      modelBytes.set(chunk, offset);
-      offset += chunk.length;
-    }
-
-    showLoading('🔍 Menyiapkan model (compiling)...');
-    modelStatus.textContent = '🤖 Model: Compiling...';
-
-    session = await ort.InferenceSession.create(modelBytes, {
-      executionProviders: ['wasm', 'cpu']
-    });
-
-    isModelReady = true;
-    modelStatus.textContent = '✅ Model Ready';
-    modelStatus.className = 'badge model-ready';
-    console.log('ONNX model berhasil dimuat');
-    console.log('Input names:', session.inputNames);
-    console.log('Output names:', session.outputNames);
-
-    startCam.disabled = false;
-    uploadBtn.disabled = false;
-    hideLoading();
-    setMessage('✅ Model siap. Aktifkan kamera atau upload gambar.', 'success');
-
-  } catch (error) {
-    clearTimeout(timeoutId);
-    hideLoading();
-    console.error('Gagal memuat model ONNX:', error);
-
-    let friendlyMsg;
-    if (error.name === 'AbortError') {
-      friendlyMsg = `Waktu unduh model habis (>${MODEL_LOAD_TIMEOUT / 1000}s). Cek koneksi internet, atau ukuran file model.onnx mungkin terlalu besar untuk koneksi ini.`;
-    } else if (String(error.message).startsWith('HTTP_404')) {
-      friendlyMsg = `File model tidak ditemukan di server (${MODEL_URL}). Pastikan best.onnx sudah ter-deploy di path tersebut.`;
-    } else if (String(error.message).startsWith('HTTP_')) {
-      friendlyMsg = `Server mengembalikan error saat mengunduh model (${error.message.replace('HTTP_', 'HTTP ')}).`;
-    } else if (/memory|out of memory|oom/i.test(String(error.message))) {
-      friendlyMsg = 'Memori browser tidak cukup untuk model 1280x1280 ini. Coba tutup tab lain, gunakan device dengan RAM lebih besar, atau kecilkan INPUT_SIZE.';
-    } else if (/sharedarraybuffer|worker/i.test(String(error.message))) {
-      friendlyMsg = 'Browser/server belum mendukung WASM multi-thread (header COOP/COEP). Coba refresh, ini biasanya masih bisa jalan single-thread.';
-    } else {
-      friendlyMsg = error.message || 'Error tidak diketahui. Cek console (F12) untuk detail.';
-    }
-
-    modelStatus.textContent = '❌ Model Error';
-    modelStatus.className = 'badge model-error';
-    setMessage('❌ Gagal memuat model: ' + friendlyMsg, 'error');
-    showPopup('❌', 'Model Gagal Dimuat', friendlyMsg);
-
-    const popupBtn = document.getElementById('popupBtn');
-    popupBtn.textContent = '🔄 Coba Lagi';
-    popupBtn.onclick = () => {
-      closePopup();
-      popupBtn.textContent = 'OK';
-      popupBtn.onclick = closePopup;
-      loadONNXModel();
-    };
-  }
-}
-
-// Preprocess image for YOLO
-function preprocessImage(imgData, canvas) {
-  const ctx = canvas.getContext('2d');
-  const img = new Image();
-  img.src = imgData;
-
-  return new Promise((resolve) => {
-    img.onload = () => {
-      // Calculate scaling
-      const scale = Math.min(INPUT_SIZE / img.width, INPUT_SIZE / img.height);
-      const newWidth = img.width * scale;
-      const newHeight = img.height * scale;
-      const offsetX = (INPUT_SIZE - newWidth) / 2;
-      const offsetY = (INPUT_SIZE - newHeight) / 2;
-
-      // Set canvas size
-      canvas.width = INPUT_SIZE;
-      canvas.height = INPUT_SIZE;
-
-      // Fill with gray (letterbox)
-      ctx.fillStyle = '#808080';
-      ctx.fillRect(0, 0, INPUT_SIZE, INPUT_SIZE);
-
-      // Draw resized image
-      ctx.drawImage(img, offsetX, offsetY, newWidth, newHeight);
-
-      // Get image data and normalize
-      const imageData = ctx.getImageData(0, 0, INPUT_SIZE, INPUT_SIZE);
-      const data = imageData.data;
-
-      // Convert to float32 array (RGB format, normalized)
-      const input = new Float32Array(3 * INPUT_SIZE * INPUT_SIZE);
-      for (let i = 0; i < INPUT_SIZE * INPUT_SIZE; i++) {
-        input[i] = data[i * 4] / 255.0;           // R
-        input[i + INPUT_SIZE * INPUT_SIZE] = data[i * 4 + 1] / 255.0; // G
-        input[i + 2 * INPUT_SIZE * INPUT_SIZE] = data[i * 4 + 2] / 255.0; // B
-      }
-
-      resolve({
-        tensor: new ort.Tensor('float32', input, [1, 3, INPUT_SIZE, INPUT_SIZE]),
-        scale: { scale, offsetX, offsetY, origWidth: img.width, origHeight: img.height }
-      });
-    };
-  });
-}
-
-// Run inference
-async function runInference(inputTensor) {
-  if (!session || !isModelReady) {
-    console.warn('Model not ready yet');
-    return null;
-  }
-
-  try {
-    const feeds = { [session.inputNames[0]]: inputTensor };
-    const results = await session.run(feeds);
-    return results[session.outputNames[0]];
-  } catch (error) {
-    console.error('Inference error:', error);
-    return null;
-  }
-}
-
-// Post-process YOLO output (YOLOv8 format: [1, numValuesPerPred, N])
-function postprocessYOLO(output, scale, imgWidth, imgHeight) {
-  const detections = [];
-
-  // YOLOv8 output shape: [1, numValuesPerPred, N] where:
-  // numValuesPerPred = 4 (bbox: x, y, w, h) + numClasses
-  // N (jumlah anchor) mengikuti INPUT_SIZE, dibaca langsung dari output.dims
-  const outputData = output.data;
-  const dims = output.dims;
-
-  if (dims.length !== 3) {
-    console.error('Unexpected output shape:', dims);
-    return detections;
-  }
-
-  const numPredictions = dims[2];
-  const numValuesPerPred = dims[1];
-  const numClasses = numValuesPerPred - 4;
-
-  for (let i = 0; i < numPredictions; i++) {
-    // Get box coordinates (first 4 values)
-    const x = outputData[i];
-    const y = outputData[numPredictions + i];
-    const w = outputData[2 * numPredictions + i];
-    const h = outputData[3 * numPredictions + i];
-
-    // Get class scores (remaining values)
-    let maxScore = 0;
-    let maxClass = 0;
-    for (let c = 0; c < numClasses; c++) {
-      const score = outputData[(4 + c) * numPredictions + i];
-      if (score > maxScore) {
-        maxScore = score;
-        maxClass = c;
-      }
-    }
-
-    if (maxScore < CONFIDENCE_THRESHOLD) continue;
-
-    // Convert center coordinates to corner coordinates
-    const x1 = Math.max(0, (x - w / 2 - scale.offsetX) / scale.scale);
-    const y1 = Math.max(0, (y - h / 2 - scale.offsetY) / scale.scale);
-    const x2 = Math.min(imgWidth, (x + w / 2 - scale.offsetX) / scale.scale);
-    const y2 = Math.min(imgHeight, (y + h / 2 - scale.offsetY) / scale.scale);
-
-    detections.push({
-      class: maxClass,
-      label: CLASS_NAMES[maxClass] || `Class ${maxClass}`,
-      confidence: maxScore,
-      bbox: [x1, y1, x2, y2]
-    });
-  }
-
-  // Apply NMS
-  return applyNMS(detections, IOU_THRESHOLD);
-}
-
-function applyNMS(detections, iouThreshold) {
-  if (detections.length === 0) return [];
-
-  // Sort by confidence
-  detections.sort((a, b) => b.confidence - a.confidence);
-
-  const keep = [];
-  const used = new Set();
-
-  for (let i = 0; i < detections.length; i++) {
-    if (used.has(i)) continue;
-
-    keep.push(detections[i]);
-    used.add(i);
-
-    for (let j = i + 1; j < detections.length; j++) {
-      if (used.has(j)) continue;
-      if (detections[j].class !== detections[i].class) continue;
-
-      const iou = calculateIOU(detections[i].bbox, detections[j].bbox);
-      if (iou > iouThreshold) {
-        used.add(j);
-      }
-    }
-  }
-
-  return keep;
-}
-
-function calculateIOU(box1, box2) {
-  const [x1, y1, x2, y2] = box1;
-  const [x3, y3, x4, y4] = box2;
-
-  const interX1 = Math.max(x1, x3);
-  const interY1 = Math.max(y1, y3);
-  const interX2 = Math.min(x2, x4);
-  const interY2 = Math.min(y2, y4);
-
-  const interArea = Math.max(0, interX2 - interX1) * Math.max(0, interY2 - interY1);
-  const box1Area = (x2 - x1) * (y2 - y1);
-  const box2Area = (x4 - x3) * (y4 - y3);
-
-  return interArea / (box1Area + box2Area - interArea);
-}
-
-// Draw detections on canvas
-function drawDetections(canvas, detections, scale) {
-  const ctx = canvas.getContext('2d');
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  const displayScale = Math.min(canvas.width / scale.origWidth, canvas.height / scale.origHeight);
-  const offsetX = (canvas.width - scale.origWidth * displayScale) / 2;
-  const offsetY = (canvas.height - scale.origHeight * displayScale) / 2;
-
-  detections.forEach((det, i) => {
-    const [x1, y1, x2, y2] = det.bbox;
-
-    // Scale to display size
-    const dx1 = x1 * displayScale + offsetX;
-    const dy1 = y1 * displayScale + offsetY;
-    const dx2 = x2 * displayScale + offsetX;
-    const dy2 = y2 * displayScale + offsetY;
-
-    // Draw box
-    ctx.strokeStyle = '#00ba7c';
-    ctx.lineWidth = 3;
-    ctx.strokeRect(dx1, dy1, dx2 - dx1, dy2 - dy1);
-
-    // Draw label
-    const label = `${det.label} ${(det.confidence * 100).toFixed(1)}%`;
-    ctx.fillStyle = '#00ba7c';
-    ctx.font = 'bold 14px sans-serif';
-    const textWidth = ctx.measureText(label).width;
-
-    ctx.fillRect(dx1, dy1 - 20, textWidth + 10, 20);
-    ctx.fillStyle = '#000';
-    ctx.fillText(label, dx1 + 5, dy1 - 5);
-  });
-}
-
-// ==================== App Logic ====================
 let webcamStream = null;
+
 let detectionLoop = null;
+
+let isDetecting = false;
+
 let lastDetectionCount = 0;
 
-const webcamVideo = document.getElementById('webcamVideo');
-const cameraContainer = document.getElementById('cameraContainer');
-const uploadArea = document.getElementById('uploadArea');
-const uploadCanvas = document.getElementById('uploadCanvas');
-const overlayCanvas = document.getElementById('overlayCanvas');
-const uploadOverlay = document.getElementById('uploadOverlay');
-const uploadContainer = document.getElementById('uploadContainer');
-const fileInput = document.getElementById('fileInput');
-const uploadBtn = document.getElementById('uploadBtn');
-const startCam = document.getElementById('startCam');
-const stopCam = document.getElementById('stopCam');
-const saveDbBtn = document.getElementById('saveDbBtn');
-const count = document.getElementById('count');
-const message = document.getElementById('message');
-const detectionsPanel = document.getElementById('detectionsPanel');
-const detectionsList = document.getElementById('detectionsList');
-const statusBadge = document.getElementById('status');
-const liveIndicator = document.getElementById('liveIndicator');
-const loadingOverlay = document.getElementById('loadingOverlay');
-const loadingText = document.getElementById('loadingText');
-const popupOverlay = document.getElementById('popupOverlay');
-const popupIcon = document.getElementById('popupIcon');
-const popupTitle = document.getElementById('popupTitle');
-const popupMessage = document.getElementById('popupMessage');
+let lastDetections = [];
 
-const API_URL = window.location.origin;
 
-// Get area from URL
-const pathParts = window.location.pathname.split('/').filter(Boolean);
-const AREA = pathParts.length > 0 ? pathParts[0] : 'default';
-document.getElementById('areaBadge').textContent = '📍 Area: ' + AREA;
+/* =========================================================
+   DOM
+========================================================= */
+
+const webcamVideo =
+  document.getElementById('webcamVideo');
+
+const cameraContainer =
+  document.getElementById('cameraContainer');
+
+const uploadArea =
+  document.getElementById('uploadArea');
+
+const uploadCanvas =
+  document.getElementById('uploadCanvas');
+
+const uploadOverlay =
+  document.getElementById('uploadOverlay');
+
+const overlayCanvas =
+  document.getElementById('overlayCanvas');
+
+const uploadContainer =
+  document.getElementById('uploadContainer');
+
+const fileInput =
+  document.getElementById('fileInput');
+
+const uploadBtn =
+  document.getElementById('uploadBtn');
+
+const startCam =
+  document.getElementById('startCam');
+
+const stopCam =
+  document.getElementById('stopCam');
+
+const saveDbBtn =
+  document.getElementById('saveDbBtn');
+
+const count =
+  document.getElementById('count');
+
+const message =
+  document.getElementById('message');
+
+const detectionsPanel =
+  document.getElementById('detectionsPanel');
+
+const detectionsList =
+  document.getElementById('detectionsList');
+
+const statusBadge =
+  document.getElementById('status');
+
+const liveIndicator =
+  document.getElementById('liveIndicator');
+
+const loadingOverlay =
+  document.getElementById('loadingOverlay');
+
+const loadingText =
+  document.getElementById('loadingText');
+
+const modelStatus =
+  document.getElementById('modelStatus');
+
+const popupOverlay =
+  document.getElementById('popupOverlay');
+
+const popupIcon =
+  document.getElementById('popupIcon');
+
+const popupTitle =
+  document.getElementById('popupTitle');
+
+const popupMessage =
+  document.getElementById('popupMessage');
+
+const popupBtn =
+  document.getElementById('popupBtn');
+
+
+/* =========================================================
+   API
+========================================================= */
+
+const API_URL =
+  window.location.origin;
+
+
+/* =========================================================
+   AREA
+========================================================= */
+
+const pathParts =
+  window.location.pathname
+    .split('/')
+    .filter(Boolean);
+
+const AREA =
+  pathParts.length > 0
+    ? pathParts[0]
+    : 'default';
+
+document.getElementById('areaBadge')
+  .textContent = '📍 Area: ' + AREA;
+
+
+/* =========================================================
+   MESSAGE
+========================================================= */
 
 function setMessage(text, type = 'info') {
+
   message.textContent = text;
-  message.className = 'message ' + type;
+
+  message.className =
+    'message ' + type;
 }
 
+
+/* =========================================================
+   LOADING
+========================================================= */
+
 function showLoading(text = 'Memproses...') {
+
   loadingText.textContent = text;
+
   loadingOverlay.classList.add('active');
 }
 
+
 function hideLoading() {
+
   loadingOverlay.classList.remove('active');
 }
 
-window.closePopup = function() {
+
+/* =========================================================
+   POPUP
+========================================================= */
+
+function closePopup() {
+
   popupOverlay.classList.remove('active');
-};
-
-function showPopup(icon, title, msg) {
-  popupIcon.textContent = icon;
-  popupTitle.textContent = title;
-  popupMessage.textContent = msg;
-  popupOverlay.classList.add('active');
 }
 
-popupOverlay.onclick = (e) => {
-  if (e.target === popupOverlay) closePopup();
-};
 
-// Health check
+window.closePopup = closePopup;
+
+
+popupOverlay.addEventListener('click', function(e) {
+
+  if (e.target === popupOverlay) {
+
+    closePopup();
+
+  }
+
+});
+
+
+/* =========================================================
+   HEALTH
+========================================================= */
+
 async function checkHealth() {
+
   try {
-    const res = await fetch(`${API_URL}/health`);
-    if (res.ok) {
-      statusBadge.textContent = '● Connected';
-      statusBadge.className = 'badge connected';
-      return;
+
+    const response =
+      await fetch(
+        `${API_URL}/health`,
+        {
+          cache: 'no-store'
+        }
+      );
+
+    if (!response.ok) {
+      throw new Error('Health check failed');
     }
-  } catch {}
-  statusBadge.textContent = '○ Disconnected';
-  statusBadge.className = 'badge disconnected';
+
+    statusBadge.textContent =
+      '● Connected';
+
+    statusBadge.className =
+      'badge connected';
+
+  } catch (error) {
+
+    statusBadge.textContent =
+      '○ Disconnected';
+
+    statusBadge.className =
+      'badge disconnected';
+
+  }
+
 }
+
+
 checkHealth();
+
 setInterval(checkHealth, 10000);
 
-// Start webcam
-startCam.onclick = async () => {
-  if (!isModelReady) {
-    setMessage('⏳ Model belum siap, mohon tunggu.', 'warning');
-    return;
-  }
+
+/* =========================================================
+   LOAD ONNX MODEL
+========================================================= */
+
+async function loadONNXModel() {
+
+  modelStatus.textContent =
+    '🤖 Model: Loading...';
+
+  modelStatus.className =
+    'badge model-loading';
+
+  isModelReady = false;
+
+  startCam.disabled = true;
+
+  uploadBtn.disabled = true;
+
+  setMessage(
+    '⏳ Memuat model AI, mohon tunggu...',
+    'info'
+  );
+
+  showLoading(
+    '🔍 Mengunduh model AI...'
+  );
+
+
+  const controller =
+    new AbortController();
+
+  const timeoutId =
+    setTimeout(
+      () => controller.abort(),
+      MODEL_LOAD_TIMEOUT
+    );
+
 
   try {
-    webcamStream = await navigator.mediaDevices.getUserMedia({
-      video: { width: 640, height: 480 }
+
+    /*
+     * WASM THREAD
+     */
+
+    const isolated =
+      typeof self !== 'undefined' &&
+      self.crossOriginIsolated === true;
+
+
+    ort.env.wasm.numThreads =
+      isolated
+        ? Math.max(
+            1,
+            Math.min(
+              navigator.hardwareConcurrency || 4,
+              8
+            )
+          )
+        : 1;
+
+
+    ort.env.wasm.loggingLevel =
+      'error';
+
+
+    console.log(
+      'crossOriginIsolated:',
+      isolated
+    );
+
+
+    /*
+     * DOWNLOAD MODEL
+     */
+
+    const response =
+      await fetch(
+        MODEL_URL,
+        {
+          signal: controller.signal,
+          cache: 'force-cache'
+        }
+      );
+
+
+    if (!response.ok) {
+
+      throw new Error(
+        `HTTP_${response.status}`
+      );
+
+    }
+
+
+    const contentLength =
+      response.headers.get(
+        'content-length'
+      );
+
+
+    const total =
+      contentLength
+        ? parseInt(contentLength, 10)
+        : 0;
+
+
+    let loaded = 0;
+
+    const chunks = [];
+
+    const reader =
+      response.body.getReader();
+
+
+    while (true) {
+
+      const {
+        done,
+        value
+      } = await reader.read();
+
+
+      if (done) {
+        break;
+      }
+
+
+      chunks.push(value);
+
+      loaded += value.length;
+
+
+      const loadedMB =
+        (
+          loaded / 1048576
+        ).toFixed(1);
+
+
+      if (total) {
+
+        const percent =
+          Math.round(
+            (loaded / total) * 100
+          );
+
+
+        showLoading(
+          `🔍 Mengunduh model AI... ${percent}% (${loadedMB} MB)`
+        );
+
+
+        modelStatus.textContent =
+          `🤖 Model: ${percent}%`;
+
+      } else {
+
+        showLoading(
+          `🔍 Mengunduh model AI... ${loadedMB} MB`
+        );
+
+      }
+
+    }
+
+
+    clearTimeout(timeoutId);
+
+
+    /*
+     * COMBINE
+     */
+
+    const modelBytes =
+      new Uint8Array(loaded);
+
+
+    let offset = 0;
+
+
+    for (const chunk of chunks) {
+
+      modelBytes.set(
+        chunk,
+        offset
+      );
+
+      offset += chunk.length;
+
+    }
+
+
+    /*
+     * COMPILE
+     */
+
+    showLoading(
+      '🔍 Menyiapkan model AI...'
+    );
+
+
+    modelStatus.textContent =
+      '🤖 Model: Compiling...';
+
+
+    /*
+     * CREATE SESSION
+     */
+
+    session =
+      await ort.InferenceSession.create(
+        modelBytes,
+        {
+          executionProviders: [
+            'wasm'
+          ],
+
+          graphOptimizationLevel:
+            'all'
+        }
+      );
+
+
+    /*
+     * READY
+     */
+
+    isModelReady = true;
+
+
+    modelStatus.textContent =
+      '✅ Model Ready';
+
+    modelStatus.className =
+      'badge model-ready';
+
+
+    console.log(
+      'ONNX model berhasil dimuat'
+    );
+
+    console.log(
+      'Input:',
+      session.inputNames
+    );
+
+    console.log(
+      'Output:',
+      session.outputNames
+    );
+
+
+    startCam.disabled = false;
+
+    uploadBtn.disabled = false;
+
+
+    hideLoading();
+
+
+    setMessage(
+      '✅ Model siap. Aktifkan kamera atau upload gambar.',
+      'success'
+    );
+
+
+  } catch (error) {
+
+    clearTimeout(timeoutId);
+
+    hideLoading();
+
+
+    console.error(
+      'ONNX error:',
+      error
+    );
+
+
+    let friendlyMsg =
+      'Error tidak diketahui.';
+
+
+    if (
+      error.name === 'AbortError'
+    ) {
+
+      friendlyMsg =
+        'Waktu download model habis.';
+
+    }
+
+    else if (
+      String(error.message)
+        .startsWith('HTTP_404')
+    ) {
+
+      friendlyMsg =
+        'File best.onnx tidak ditemukan.';
+
+    }
+
+    else if (
+      /memory|out of memory|oom/i
+        .test(String(error.message))
+    ) {
+
+      friendlyMsg =
+        'Memori browser tidak cukup untuk model 1280x1280.';
+
+    }
+
+    else {
+
+      friendlyMsg =
+        error.message ||
+        friendlyMsg;
+
+    }
+
+
+    modelStatus.textContent =
+      '❌ Model Error';
+
+    modelStatus.className =
+      'badge model-error';
+
+
+    setMessage(
+      '❌ Gagal memuat model: ' +
+      friendlyMsg,
+      'error'
+    );
+
+
+    popupIcon.textContent = '❌';
+
+    popupTitle.textContent =
+      'Model Gagal Dimuat';
+
+    popupMessage.textContent =
+      friendlyMsg;
+
+    popupBtn.textContent =
+      '🔄 Coba Lagi';
+
+    popupBtn.onclick = function() {
+
+      closePopup();
+
+      popupBtn.textContent = 'OK';
+
+      popupBtn.onclick =
+        closePopup;
+
+      loadONNXModel();
+
+    };
+
+
+    popupOverlay.classList.add(
+      'active'
+    );
+
+  }
+
+}
+
+
+/* =========================================================
+   PREPROCESS IMAGE
+========================================================= */
+
+async function preprocessImage(
+  imageSource
+) {
+
+  const img =
+    imageSource instanceof HTMLImageElement
+      ? imageSource
+      : await loadImage(imageSource);
+
+
+  const canvas =
+    document.createElement('canvas');
+
+
+  canvas.width =
+    INPUT_SIZE;
+
+  canvas.height =
+    INPUT_SIZE;
+
+
+  const ctx =
+    canvas.getContext(
+      '2d',
+      {
+        willReadFrequently: true
+      }
+    );
+
+
+  const scale =
+    Math.min(
+      INPUT_SIZE / img.width,
+      INPUT_SIZE / img.height
+    );
+
+
+  const newWidth =
+    Math.round(
+      img.width * scale
+    );
+
+
+  const newHeight =
+    Math.round(
+      img.height * scale
+    );
+
+
+  const offsetX =
+    Math.floor(
+      (INPUT_SIZE - newWidth) / 2
+    );
+
+
+  const offsetY =
+    Math.floor(
+      (INPUT_SIZE - newHeight) / 2
+    );
+
+
+  /*
+   * LETTERBOX
+   */
+
+  ctx.fillStyle =
+    '#808080';
+
+  ctx.fillRect(
+    0,
+    0,
+    INPUT_SIZE,
+    INPUT_SIZE
+  );
+
+
+  ctx.drawImage(
+    img,
+    offsetX,
+    offsetY,
+    newWidth,
+    newHeight
+  );
+
+
+  /*
+   * IMAGE DATA
+   */
+
+  const imageData =
+    ctx.getImageData(
+      0,
+      0,
+      INPUT_SIZE,
+      INPUT_SIZE
+    );
+
+
+  const data =
+    imageData.data;
+
+
+  const pixelCount =
+    INPUT_SIZE * INPUT_SIZE;
+
+
+  const input =
+    new Float32Array(
+      3 * pixelCount
+    );
+
+
+  for (
+    let i = 0;
+    i < pixelCount;
+    i++
+  ) {
+
+    const src =
+      i * 4;
+
+
+    input[i] =
+      data[src] / 255;
+
+
+    input[
+      pixelCount + i
+    ] =
+      data[src + 1] / 255;
+
+
+    input[
+      pixelCount * 2 + i
+    ] =
+      data[src + 2] / 255;
+
+  }
+
+
+  return {
+
+    tensor:
+      new ort.Tensor(
+        'float32',
+        input,
+        [
+          1,
+          3,
+          INPUT_SIZE,
+          INPUT_SIZE
+        ]
+      ),
+
+    scale: {
+
+      scale,
+
+      offsetX,
+
+      offsetY,
+
+      origWidth:
+        img.width,
+
+      origHeight:
+        img.height
+
+    }
+
+  };
+
+}
+
+
+/* =========================================================
+   LOAD IMAGE
+========================================================= */
+
+function loadImage(src) {
+
+  return new Promise(
+    (resolve, reject) => {
+
+      const img =
+        new Image();
+
+
+      img.onload =
+        () => resolve(img);
+
+
+      img.onerror =
+        () => reject(
+          new Error(
+            'Gagal membaca gambar'
+          )
+        );
+
+
+      img.src = src;
+
+    }
+  );
+
+}
+
+
+/* =========================================================
+   RUN INFERENCE
+========================================================= */
+
+async function runInference(
+  tensor
+) {
+
+  if (
+    !session ||
+    !isModelReady
+  ) {
+
+    return null;
+
+  }
+
+
+  try {
+
+    const feeds = {
+
+      [session.inputNames[0]]:
+        tensor
+
+    };
+
+
+    const results =
+      await session.run(
+        feeds
+      );
+
+
+    return results[
+      session.outputNames[0]
+    ];
+
+
+  } catch (error) {
+
+    console.error(
+      'Inference error:',
+      error
+    );
+
+    return null;
+
+  }
+
+}
+
+
+/* =========================================================
+   POST PROCESS YOLO
+========================================================= */
+
+function postprocessYOLO(
+  output,
+  scaleInfo,
+  imgWidth,
+  imgHeight
+) {
+
+  const detections = [];
+
+  const outputData =
+    output.data;
+
+  const dims =
+    output.dims;
+
+
+  if (
+    dims.length !== 3
+  ) {
+
+    console.error(
+      'Unexpected output shape:',
+      dims
+    );
+
+    return detections;
+
+  }
+
+
+  /*
+   * YOLOV8
+   *
+   * [1, 4 + classes, predictions]
+   */
+
+  const numValues =
+    dims[1];
+
+  const numPredictions =
+    dims[2];
+
+  const numClasses =
+    numValues - 4;
+
+
+  for (
+    let i = 0;
+    i < numPredictions;
+    i++
+  ) {
+
+    const x =
+      outputData[i];
+
+    const y =
+      outputData[
+        numPredictions + i
+      ];
+
+    const w =
+      outputData[
+        numPredictions * 2 + i
+      ];
+
+    const h =
+      outputData[
+        numPredictions * 3 + i
+      ];
+
+
+    let maxScore = 0;
+
+    let maxClass = 0;
+
+
+    for (
+      let c = 0;
+      c < numClasses;
+      c++
+    ) {
+
+      const score =
+        outputData[
+          (4 + c) *
+          numPredictions +
+          i
+        ];
+
+
+      if (
+        score > maxScore
+      ) {
+
+        maxScore =
+          score;
+
+        maxClass =
+          c;
+
+      }
+
+    }
+
+
+    if (
+      maxScore <
+      CONFIDENCE_THRESHOLD
+    ) {
+
+      continue;
+
+    }
+
+
+    /*
+     * Convert box
+     */
+
+    let x1 =
+      (
+        x -
+        w / 2 -
+        scaleInfo.offsetX
+      ) /
+      scaleInfo.scale;
+
+
+    let y1 =
+      (
+        y -
+        h / 2 -
+        scaleInfo.offsetY
+      ) /
+      scaleInfo.scale;
+
+
+    let x2 =
+      (
+        x +
+        w / 2 -
+        scaleInfo.offsetX
+      ) /
+      scaleInfo.scale;
+
+
+    let y2 =
+      (
+        y +
+        h / 2 -
+        scaleInfo.offsetY
+      ) /
+      scaleInfo.scale;
+
+
+    x1 =
+      Math.max(
+        0,
+        Math.min(
+          imgWidth,
+          x1
+        )
+      );
+
+
+    y1 =
+      Math.max(
+        0,
+        Math.min(
+          imgHeight,
+          y1
+        )
+      );
+
+
+    x2 =
+      Math.max(
+        0,
+        Math.min(
+          imgWidth,
+          x2
+        )
+      );
+
+
+    y2 =
+      Math.max(
+        0,
+        Math.min(
+          imgHeight,
+          y2
+        )
+      );
+
+
+    if (
+      x2 <= x1 ||
+      y2 <= y1
+    ) {
+
+      continue;
+
+    }
+
+
+    detections.push({
+
+      class: maxClass,
+
+      label:
+        CLASS_NAMES[maxClass] ||
+        `Class ${maxClass}`,
+
+      confidence:
+        maxScore,
+
+      bbox: [
+        x1,
+        y1,
+        x2,
+        y2
+      ]
+
     });
-    webcamVideo.srcObject = webcamStream;
 
-    cameraContainer.style.display = 'block';
-    uploadArea.style.display = 'none';
-    uploadContainer.style.display = 'none';
+  }
 
-    startCam.disabled = true;
-    stopCam.disabled = false;
-    liveIndicator.style.display = 'inline';
 
-    setMessage('✅ Kamera aktif. Mendeteksi...', 'success');
+  return applyNMS(
+    detections,
+    IOU_THRESHOLD
+  );
 
-    // Start detection loop
-    async function detectFrame() {
-      if (!webcamStream) return;
+}
+
+
+/* =========================================================
+   NMS
+========================================================= */
+
+function applyNMS(
+  detections,
+  iouThreshold
+) {
+
+  if (
+    detections.length === 0
+  ) {
+
+    return [];
+
+  }
+
+
+  detections.sort(
+    (a, b) =>
+      b.confidence -
+      a.confidence
+  );
+
+
+  const keep = [];
+
+
+  for (
+    const detection
+    of detections
+  ) {
+
+    let shouldKeep = true;
+
+
+    for (
+      const selected
+      of keep
+    ) {
+
+      if (
+        detection.class !==
+        selected.class
+      ) {
+
+        continue;
+
+      }
+
+
+      const iou =
+        calculateIOU(
+          detection.bbox,
+          selected.bbox
+        );
+
+
+      if (
+        iou > iouThreshold
+      ) {
+
+        shouldKeep = false;
+
+        break;
+
+      }
+
+    }
+
+
+    if (shouldKeep) {
+
+      keep.push(
+        detection
+      );
+
+    }
+
+  }
+
+
+  return keep;
+
+}
+
+
+/* =========================================================
+   IOU
+========================================================= */
+
+function calculateIOU(
+  box1,
+  box2
+) {
+
+  const [
+    x1,
+    y1,
+    x2,
+    y2
+  ] = box1;
+
+
+  const [
+    x3,
+    y3,
+    x4,
+    y4
+  ] = box2;
+
+
+  const interX1 =
+    Math.max(
+      x1,
+      x3
+    );
+
+
+  const interY1 =
+    Math.max(
+      y1,
+      y3
+    );
+
+
+  const interX2 =
+    Math.min(
+      x2,
+      x4
+    );
+
+
+  const interY2 =
+    Math.min(
+      y2,
+      y4
+    );
+
+
+  const interWidth =
+    Math.max(
+      0,
+      interX2 - interX1
+    );
+
+
+  const interHeight =
+    Math.max(
+      0,
+      interY2 - interY1
+    );
+
+
+  const intersection =
+    interWidth *
+    interHeight;
+
+
+  const area1 =
+    Math.max(
+      0,
+      x2 - x1
+    ) *
+    Math.max(
+      0,
+      y2 - y1
+    );
+
+
+  const area2 =
+    Math.max(
+      0,
+      x4 - x3
+    ) *
+    Math.max(
+      0,
+      y4 - y3
+    );
+
+
+  const union =
+    area1 +
+    area2 -
+    intersection;
+
+
+  if (
+    union <= 0
+  ) {
+
+    return 0;
+
+  }
+
+
+  return (
+    intersection /
+    union
+  );
+
+}
+
+
+/* =========================================================
+   DRAW DETECTIONS
+========================================================= */
+
+function drawDetections(
+  canvas,
+  detections,
+  imageWidth,
+  imageHeight
+) {
+
+  /*
+   * Set actual canvas resolution
+   */
+
+  if (
+    canvas.width !== imageWidth ||
+    canvas.height !== imageHeight
+  ) {
+
+    canvas.width =
+      imageWidth;
+
+    canvas.height =
+      imageHeight;
+
+  }
+
+
+  const ctx =
+    canvas.getContext('2d');
+
+
+  ctx.clearRect(
+    0,
+    0,
+    canvas.width,
+    canvas.height
+  );
+
+
+  /*
+   * Karena canvas memiliki ukuran
+   * yang sama dengan source image,
+   * koordinat detection langsung digunakan.
+   */
+
+  detections.forEach(
+    (det, index) => {
+
+      const [
+        x1,
+        y1,
+        x2,
+        y2
+      ] = det.bbox;
+
+
+      const width =
+        x2 - x1;
+
+      const height =
+        y2 - y1;
+
+
+      /*
+       * BOX
+       */
+
+      ctx.strokeStyle =
+        '#00ba7c';
+
+      ctx.lineWidth = 4;
+
+      ctx.strokeRect(
+        x1,
+        y1,
+        width,
+        height
+      );
+
+
+      /*
+       * LABEL
+       */
+
+      const label =
+        `${index + 1}. ${det.label} ${(det.confidence * 100).toFixed(1)}%`;
+
+
+      ctx.font =
+        'bold 16px sans-serif';
+
+
+      const textWidth =
+        ctx.measureText(
+          label
+        ).width;
+
+
+      const labelHeight =
+        26;
+
+
+      let labelY =
+        y1 - labelHeight;
+
+
+      if (
+        labelY < 0
+      ) {
+
+        labelY = y1;
+
+      }
+
+
+      ctx.fillStyle =
+        '#00ba7c';
+
+
+      ctx.fillRect(
+        x1,
+        labelY,
+        textWidth + 12,
+        labelHeight
+      );
+
+
+      ctx.fillStyle =
+        '#000';
+
+
+      ctx.fillText(
+        label,
+        x1 + 6,
+        labelY + 18
+      );
+
+    }
+  );
+
+}
+
+
+/* =========================================================
+   RENDER DETECTIONS
+========================================================= */
+
+function renderDetections(
+  detections
+) {
+
+  if (
+    !detections ||
+    detections.length === 0
+  ) {
+
+    detectionsPanel.style.display =
+      'none';
+
+    detectionsList.innerHTML =
+      '';
+
+    return;
+
+  }
+
+
+  detectionsList.innerHTML =
+    detections
+      .map(
+        (d, i) => {
+
+          const percentage =
+            (
+              d.confidence *
+              100
+            ).toFixed(1);
+
+
+          return `
+
+            <div class="detection-item">
+
+              <div class="detection-num">
+                ${i + 1}
+              </div>
+
+              <div class="detection-info">
+
+                <div class="detection-label">
+                  ${d.label}
+                </div>
+
+                <div class="detection-meta">
+                  Confidence: ${percentage}%
+                </div>
+
+              </div>
+
+              <div class="confidence-bar">
+
+                <div
+                  class="confidence-fill"
+                  style="width:${percentage}%">
+                </div>
+
+              </div>
+
+            </div>
+
+          `;
+
+        }
+      )
+      .join('');
+
+
+  detectionsPanel.style.display =
+    'block';
+
+}
+
+
+/* =========================================================
+   CAMERA
+========================================================= */
+
+startCam.onclick =
+  async function() {
+
+    if (!isModelReady) {
+
+      setMessage(
+        '⏳ Model belum siap.',
+        'warning'
+      );
+
+      return;
+
+    }
+
+
+    try {
+
+      webcamStream =
+        await navigator.mediaDevices
+          .getUserMedia({
+
+            video: {
+
+              width: {
+                ideal:
+                  CAMERA_WIDTH
+              },
+
+              height: {
+                ideal:
+                  CAMERA_HEIGHT
+              },
+
+              facingMode:
+                'environment'
+
+            },
+
+            audio: false
+
+          });
+
+
+      webcamVideo.srcObject =
+        webcamStream;
+
+
+      await webcamVideo.play();
+
+
+      cameraContainer.style.display =
+        'block';
+
+      uploadContainer.style.display =
+        'none';
+
+      uploadArea.style.display =
+        'none';
+
+
+      startCam.disabled =
+        true;
+
+      stopCam.disabled =
+        false;
+
+
+      liveIndicator.style.display =
+        'inline';
+
+      liveIndicator.style.background =
+        'rgba(0,186,124,0.2)';
+
+      liveIndicator.style.color =
+        'var(--accent-green)';
+
+
+      setMessage(
+        '✅ Kamera aktif. Mendeteksi...',
+        'success'
+      );
+
+
+      /*
+       * Tunggu video punya ukuran
+       */
+
+      if (
+        webcamVideo.readyState < 2
+      ) {
+
+        await new Promise(
+          resolve => {
+
+            webcamVideo.onloadedmetadata =
+              resolve;
+
+          }
+        );
+
+      }
+
+
+      startDetectionLoop();
+
+
+    } catch (error) {
+
+      console.error(
+        'Camera error:',
+        error
+      );
+
+
+      setMessage(
+        '❌ Gagal mengakses kamera: ' +
+        error.message,
+        'error'
+      );
+
+    }
+
+  };
+
+
+/* =========================================================
+   DETECTION LOOP
+========================================================= */
+
+function startDetectionLoop() {
+
+  stopDetectionLoop();
+
+
+  async function detectFrame() {
+
+    if (
+      !webcamStream
+    ) {
+
+      return;
+
+    }
+
+
+    /*
+     * Jangan jalankan inference baru
+     * sebelum inference sebelumnya selesai.
+     */
+
+    if (
+      !isDetecting &&
+      webcamVideo.videoWidth > 0 &&
+      webcamVideo.videoHeight > 0
+    ) {
+
+      isDetecting = true;
+
 
       try {
-        // Create temp canvas for capture
-        const tempCanvas = document.createElement('canvas');
-        tempCanvas.width = webcamVideo.videoWidth;
-        tempCanvas.height = webcamVideo.videoHeight;
-        const tempCtx = tempCanvas.getContext('2d');
-        tempCtx.drawImage(webcamVideo, 0, 0);
 
-        // Preprocess
-        const tempCanvas2 = document.createElement('canvas');
-        const { tensor, scale } = await preprocessImage(tempCanvas.toDataURL(), tempCanvas2);
+        /*
+         * Capture video langsung
+         */
 
-        // Run inference
-        const output = await runInference(tensor);
+        const tempCanvas =
+          document.createElement(
+            'canvas'
+          );
+
+
+        tempCanvas.width =
+          webcamVideo.videoWidth;
+
+        tempCanvas.height =
+          webcamVideo.videoHeight;
+
+
+        const ctx =
+          tempCanvas.getContext(
+            '2d',
+            {
+              willReadFrequently: true
+            }
+          );
+
+
+        ctx.drawImage(
+          webcamVideo,
+          0,
+          0,
+          tempCanvas.width,
+          tempCanvas.height
+        );
+
+
+        /*
+         * Preprocess langsung dari canvas
+         */
+
+        const {
+          tensor,
+          scale
+        } =
+          await preprocessImage(
+            tempCanvas
+          );
+
+
+        /*
+         * Inference
+         */
+
+        const output =
+          await runInference(
+            tensor
+          );
+
 
         if (output) {
-          const detections = postprocessYOLO(output, scale, webcamVideo.videoWidth, webcamVideo.videoHeight);
 
-          // Update count
-          count.textContent = detections.length;
-          lastDetectionCount = detections.length;
+          const detections =
+            postprocessYOLO(
+              output,
+              scale,
+              webcamVideo.videoWidth,
+              webcamVideo.videoHeight
+            );
 
-          // Draw on overlay
-          drawDetections(overlayCanvas, detections, scale);
 
-          // Render detection list
-          if (detections.length > 0) {
-            renderDetections(detections);
-            saveDbBtn.disabled = false;
-            setMessage(`✅ ${detections.length} objek terdeteksi`, 'success');
+          lastDetections =
+            detections;
+
+          lastDetectionCount =
+            detections.length;
+
+
+          count.textContent =
+            detections.length;
+
+
+          /*
+           * Overlay mengikuti ukuran video
+           */
+
+          drawDetections(
+            overlayCanvas,
+            detections,
+            webcamVideo.videoWidth,
+            webcamVideo.videoHeight
+          );
+
+
+          if (
+            detections.length > 0
+          ) {
+
+            renderDetections(
+              detections
+            );
+
+
+            saveDbBtn.disabled =
+              false;
+
+
+            setMessage(
+              `✅ ${detections.length} objek terdeteksi`,
+              'success'
+            );
+
           } else {
-            detectionsPanel.style.display = 'none';
-            setMessage('📹 Mendeteksi...', 'info');
+
+            detectionsPanel.style.display =
+              'none';
+
+
+            setMessage(
+              '📹 Mendeteksi...',
+              'info'
+            );
+
           }
+
         }
-      } catch (e) {
-        console.error('Detection error:', e);
+
+      } catch (error) {
+
+        console.error(
+          'Detection error:',
+          error
+        );
+
+      } finally {
+
+        isDetecting =
+          false;
+
       }
 
-      detectionLoop = requestAnimationFrame(detectFrame);
     }
 
-    detectFrame();
 
-  } catch (error) {
-    console.error('Camera error:', error);
-    setMessage('❌ Gagal mengakses kamera: ' + error.message, 'error');
-  }
-};
+    detectionLoop =
+      requestAnimationFrame(
+        detectFrame
+      );
 
-// Stop webcam
-stopCam.onclick = () => {
-  if (detectionLoop) {
-    cancelAnimationFrame(detectionLoop);
-    detectionLoop = null;
   }
 
-  if (webcamStream) {
-    webcamStream.getTracks().forEach(track => track.stop());
-    webcamStream = null;
-  }
 
-  webcamVideo.srcObject = null;
-  cameraContainer.style.display = 'none';
-  uploadContainer.style.display = 'none';
-  uploadArea.style.display = 'block';
-  overlayCanvas.getContext('2d').clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+  detectFrame();
 
-  startCam.disabled = false;
-  stopCam.disabled = true;
-  liveIndicator.style.display = 'none';
-
-  setMessage(`⏹ Kamera berhenti. Total: ${lastDetectionCount} objek.`, 'info');
-};
-
-function renderDetections(detections) {
-  if (!detections || detections.length === 0) {
-    detectionsPanel.style.display = 'none';
-    return;
-  }
-
-  detectionsList.innerHTML = detections.map((d, i) => `
-    <div class="detection-item">
-      <div class="detection-num">${i + 1}</div>
-      <div class="detection-info">
-        <div class="detection-label">${d.label}</div>
-        <div class="detection-meta">Confidence: ${(d.confidence * 100).toFixed(1)}%</div>
-      </div>
-    </div>
-  `).join('');
-
-  detectionsPanel.style.display = 'block';
 }
 
-// Upload handlers
-uploadBtn.onclick = () => {
-  if (!isModelReady) {
-    setMessage('⏳ Model belum siap, mohon tunggu.', 'warning');
-    return;
-  }
-  fileInput.click();
-};
 
-fileInput.onchange = async (e) => {
-  const file = e.target.files[0];
-  if (file) await processFile(file);
-};
+/* =========================================================
+   STOP DETECTION LOOP
+========================================================= */
 
-uploadArea.ondragover = (e) => {
-  e.preventDefault();
-  uploadArea.style.background = 'rgba(0, 186, 124, 0.1)';
-};
-uploadArea.ondragleave = () => { uploadArea.style.background = ''; };
-uploadArea.ondrop = async (e) => {
-  e.preventDefault();
-  uploadArea.style.background = '';
-  if (!isModelReady) {
-    setMessage('⏳ Model belum siap, mohon tunggu.', 'warning');
-    return;
-  }
-  const file = e.dataTransfer.files[0];
-  if (file && file.type.startsWith('image/')) await processFile(file);
-};
+function stopDetectionLoop() {
 
-async function processFile(file) {
-  if (!isModelReady) {
-    setMessage('⏳ Model belum siap, mohon tunggu.', 'warning');
-    return;
+  if (
+    detectionLoop
+  ) {
+
+    cancelAnimationFrame(
+      detectionLoop
+    );
+
+    detectionLoop =
+      null;
+
   }
 
-  showLoading('🔍 Menganalisis gambar...');
-  setMessage('⏳ Menganalisis...', 'info');
+}
+
+
+/* =========================================================
+   STOP CAMERA
+========================================================= */
+
+stopCam.onclick =
+  function() {
+
+    stopDetectionLoop();
+
+
+    isDetecting =
+      false;
+
+
+    if (
+      webcamStream
+    ) {
+
+      webcamStream
+        .getTracks()
+        .forEach(
+          track =>
+            track.stop()
+        );
+
+
+      webcamStream =
+        null;
+
+    }
+
+
+    webcamVideo.srcObject =
+      null;
+
+
+    cameraContainer.style.display =
+      'none';
+
+
+    uploadContainer.style.display =
+      'none';
+
+
+    uploadArea.style.display =
+      'flex';
+
+
+    if (
+      overlayCanvas
+    ) {
+
+      const ctx =
+        overlayCanvas
+          .getContext('2d');
+
+
+      ctx.clearRect(
+        0,
+        0,
+        overlayCanvas.width,
+        overlayCanvas.height
+      );
+
+    }
+
+
+    startCam.disabled =
+      false;
+
+    stopCam.disabled =
+      true;
+
+
+    liveIndicator.style.display =
+      'none';
+
+
+    setMessage(
+      `⏹ Kamera berhenti. Total terakhir: ${lastDetectionCount} objek.`,
+      'info'
+    );
+
+  };
+
+
+/* =========================================================
+   UPLOAD BUTTON
+========================================================= */
+
+uploadBtn.onclick =
+  function() {
+
+    if (
+      !isModelReady
+    ) {
+
+      setMessage(
+        '⏳ Model belum siap.',
+        'warning'
+      );
+
+      return;
+
+    }
+
+
+    fileInput.click();
+
+  };
+
+
+/* =========================================================
+   UPLOAD AREA CLICK
+========================================================= */
+
+uploadArea.onclick =
+  function() {
+
+    if (
+      !isModelReady
+    ) {
+
+      setMessage(
+        '⏳ Model belum siap.',
+        'warning'
+      );
+
+      return;
+
+    }
+
+
+    fileInput.click();
+
+  };
+
+
+/* =========================================================
+   FILE INPUT
+========================================================= */
+
+fileInput.onchange =
+  async function(e) {
+
+    const file =
+      e.target.files[0];
+
+
+    if (file) {
+
+      await processFile(
+        file
+      );
+
+    }
+
+
+    fileInput.value =
+      '';
+
+  };
+
+
+/* =========================================================
+   DRAG OVER
+========================================================= */
+
+uploadArea.ondragover =
+  function(e) {
+
+    e.preventDefault();
+
+    uploadArea.classList.add(
+      'dragover'
+    );
+
+  };
+
+
+/* =========================================================
+   DRAG LEAVE
+========================================================= */
+
+uploadArea.ondragleave =
+  function() {
+
+    uploadArea.classList.remove(
+      'dragover'
+    );
+
+  };
+
+
+/* =========================================================
+   DROP
+========================================================= */
+
+uploadArea.ondrop =
+  async function(e) {
+
+    e.preventDefault();
+
+    uploadArea.classList.remove(
+      'dragover'
+    );
+
+
+    if (
+      !isModelReady
+    ) {
+
+      setMessage(
+        '⏳ Model belum siap.',
+        'warning'
+      );
+
+      return;
+
+    }
+
+
+    const file =
+      e.dataTransfer.files[0];
+
+
+    if (
+      file &&
+      file.type.startsWith(
+        'image/'
+      )
+    ) {
+
+      await processFile(
+        file
+      );
+
+    }
+
+  };
+
+
+/* =========================================================
+   PROCESS FILE
+========================================================= */
+
+async function processFile(
+  file
+) {
+
+  if (
+    !isModelReady
+  ) {
+
+    setMessage(
+      '⏳ Model belum siap.',
+      'warning'
+    );
+
+    return;
+
+  }
+
+
+  /*
+   * Stop camera
+   */
+
+  if (
+    webcamStream
+  ) {
+
+    stopCam.click();
+
+  }
+
+
+  showLoading(
+    '🔍 Menganalisis gambar...'
+  );
+
+
+  setMessage(
+    '⏳ Menganalisis...',
+    'info'
+  );
+
 
   try {
-    // Load image
-    const img = new Image();
-    img.src = URL.createObjectURL(file);
 
-    await new Promise((resolve) => { img.onload = resolve; });
+    /*
+     * Load image
+     */
 
-    // Display on canvas
-    uploadCanvas.width = img.width;
-    uploadCanvas.height = img.height;
-    const ctx = uploadCanvas.getContext('2d');
-    ctx.drawImage(img, 0, 0);
-    uploadContainer.style.display = 'block';
-    uploadArea.style.display = 'none';
-    cameraContainer.style.display = 'none';
+    const imageUrl =
+      URL.createObjectURL(
+        file
+      );
 
-    // Show overlay for detections
-    uploadOverlay.width = img.width;
-    uploadOverlay.height = img.height;
-    uploadOverlay.style.display = 'block';
 
-    // Preprocess
-    const preprocessCanvas = document.createElement('canvas');
-    const { tensor, scale } = await preprocessImage(uploadCanvas.toDataURL(), preprocessCanvas);
+    const img =
+      await loadImage(
+        imageUrl
+      );
 
-    // Run inference
-    const output = await runInference(tensor);
 
-    if (output) {
-      const detections = postprocessYOLO(output, scale, img.width, img.height);
+    /*
+     * Display image
+     */
 
-      console.log('Detections:', detections);
+    uploadCanvas.width =
+      img.width;
 
-      // Draw detections on overlay
-      drawDetections(uploadOverlay, detections, { origWidth: img.width, origHeight: img.height });
+    uploadCanvas.height =
+      img.height;
 
-      // Update count
-      count.textContent = detections.length;
-      lastDetectionCount = detections.length;
 
-      if (detections.length > 0) {
-        renderDetections(detections);
-        saveDbBtn.disabled = false;
-        setMessage(`✅ Deteksi berhasil! ${detections.length} objek ditemukan.`, 'success');
-      } else {
-        setMessage('⚠️ Tidak ada objek terdeteksi.', 'warning');
+    const ctx =
+      uploadCanvas
+        .getContext('2d');
+
+
+    ctx.drawImage(
+      img,
+      0,
+      0
+    );
+
+
+    uploadOverlay.width =
+      img.width;
+
+    uploadOverlay.height =
+      img.height;
+
+
+    uploadContainer.style.display =
+      'block';
+
+    uploadArea.style.display =
+      'none';
+
+    cameraContainer.style.display =
+      'none';
+
+
+    /*
+     * PREPROCESS
+     */
+
+    const {
+      tensor,
+      scale
+    } =
+      await preprocessImage(
+        img
+      );
+
+
+    /*
+     * INFERENCE
+     */
+
+    const output =
+      await runInference(
+        tensor
+      );
+
+
+    if (!output) {
+
+      throw new Error(
+        'Inference gagal.'
+      );
+
+    }
+
+
+    /*
+     * POSTPROCESS
+     */
+
+    const detections =
+      postprocessYOLO(
+        output,
+        scale,
+        img.width,
+        img.height
+      );
+
+
+    console.log(
+      'Detections:',
+      detections
+    );
+
+
+    /*
+     * SAVE GLOBAL
+     */
+
+    lastDetections =
+      detections;
+
+    lastDetectionCount =
+      detections.length;
+
+
+    /*
+     * DRAW
+     */
+
+    drawDetections(
+      uploadOverlay,
+      detections,
+      img.width,
+      img.height
+    );
+
+
+    /*
+     * COUNT
+     */
+
+    count.textContent =
+      detections.length;
+
+
+    /*
+     * RESULT
+     */
+
+    if (
+      detections.length > 0
+    ) {
+
+      renderDetections(
+        detections
+      );
+
+
+      saveDbBtn.disabled =
+        false;
+
+
+      setMessage(
+        `✅ Deteksi berhasil! ${detections.length} objek ditemukan.`,
+        'success'
+      );
+
+    } else {
+
+      detectionsPanel.style.display =
+        'none';
+
+
+      saveDbBtn.disabled =
+        true;
+
+
+      setMessage(
+        '⚠️ Tidak ada objek terdeteksi.',
+        'warning'
+      );
+
+    }
+
+
+    URL.revokeObjectURL(
+      imageUrl
+    );
+
+
+  } catch (error) {
+
+    console.error(
+      'Process error:',
+      error
+    );
+
+
+    setMessage(
+      '❌ Error: ' +
+      error.message,
+      'error'
+    );
+
+
+  } finally {
+
+    hideLoading();
+
+  }
+
+}
+
+
+/* =========================================================
+   SAVE DATABASE
+========================================================= */
+
+saveDbBtn.onclick =
+  async function() {
+
+    if (
+      lastDetectionCount <= 0
+    ) {
+
+      setMessage(
+        '⚠️ Tidak ada data untuk disimpan.',
+        'warning'
+      );
+
+      return;
+
+    }
+
+
+    showLoading(
+      '💾 Menyimpan ke database...'
+    );
+
+
+    setMessage(
+      '⏳ Menyimpan...',
+      'info'
+    );
+
+
+    saveDbBtn.disabled =
+      true;
+
+
+    try {
+
+      /*
+       * Browser time Asia/Jakarta
+       */
+
+      const now =
+        new Date();
+
+
+      const formatter =
+        new Intl.DateTimeFormat(
+          'en-CA',
+          {
+            timeZone:
+              'Asia/Jakarta',
+
+            year:
+              'numeric',
+
+            month:
+              '2-digit',
+
+            day:
+              '2-digit',
+
+            hour:
+              '2-digit',
+
+            minute:
+              '2-digit',
+
+            second:
+              '2-digit',
+
+            hour12:
+              false
+          }
+        );
+
+
+      const parts =
+        formatter.formatToParts(
+          now
+        );
+
+
+      const values = {};
+
+
+      parts.forEach(
+        part => {
+
+          if (
+            part.type !== 'literal'
+          ) {
+
+            values[
+              part.type
+            ] =
+              part.value;
+
+          }
+
+        }
+      );
+
+
+      const dt_ins =
+        `${values.year}-${values.month}-${values.day}`;
+
+
+      const seq_time =
+        `${values.year}-${values.month}-${values.day} ${values.hour}:${values.minute}:${values.second}`;
+
+
+      /*
+       * API
+       */
+
+      const response =
+        await fetch(
+          `${API_URL}/api/save-detection`,
+          {
+            method: 'POST',
+
+            headers: {
+              'Content-Type':
+                'application/json'
+            },
+
+            body:
+              JSON.stringify({
+
+                countc:
+                  lastDetectionCount,
+
+                dt_ins,
+
+                seq_time,
+
+                area:
+                  AREA
+
+              })
+
+          }
+        );
+
+
+      const result =
+        await response.json();
+
+
+      if (!response.ok) {
+
+        throw new Error(
+          result.detail ||
+          'Gagal menyimpan'
+        );
+
       }
-    } else {
-      setMessage('⚠️ Gagal menjalankan inference.', 'warning');
-    }
-  } catch (error) {
-    console.error('Process error:', error);
-    setMessage('❌ Error: ' + error.message, 'error');
-  } finally {
-    hideLoading();
-  }
-}
 
-// Save to DB
-document.getElementById('saveDbBtn').onclick = async () => {
-  if (lastDetectionCount === 0) {
-    setMessage('⚠️ Tidak ada data untuk disimpan.', 'warning');
-    return;
-  }
 
-  showLoading('💾 Menyimpan ke database...');
-  setMessage('⏳ Menyimpan...', 'info');
-  saveDbBtn.disabled = true;
-
-  const now = new Date();
-  const jakartaOffset = 7 * 60;
-  const jakartaTime = new Date(now.getTime() + (now.getTimezoneOffset() + jakartaOffset) * 60000);
-  const dt_ins = jakartaTime.toISOString().split('T')[0];
-  const seq_time = jakartaTime.toISOString().replace('T', ' ').split('.')[0];
-
-  try {
-    const response = await fetch(`${API_URL}/api/save-detection`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ countc: lastDetectionCount, dt_ins, seq_time, area: AREA })
-    });
-
-    const result = await response.json();
-
-    if (response.ok) {
       hideLoading();
-      setMessage(`✅ Tersimpan! ID: ${result.id}`, 'success');
-      showPopup('✅', 'Berhasil!', `ID: ${result.id}\nJumlah: ${result.count}\nArea: ${AREA}\nWaktu: ${seq_time}`);
-    } else {
-      hideLoading();
-      setMessage('❌ Gagal menyimpan.', 'error');
-      showPopup('❌', 'Gagal!', result.detail || 'Error tidak diketahui');
-    }
-  } catch (error) {
-    hideLoading();
-    setMessage('❌ Error: ' + error.message, 'error');
-    showPopup('❌', 'Gagal!', 'Tidak dapat terhubung ke server.');
-  } finally {
-    saveDbBtn.disabled = false;
-  }
-};
 
-// Load ONNX model on start
+
+      setMessage(
+        `✅ Tersimpan! ID: ${result.id}`,
+        'success'
+      );
+
+
+      popupIcon.textContent =
+        '✅';
+
+
+      popupTitle.textContent =
+        'Berhasil!';
+
+
+      popupMessage.textContent =
+        `ID: ${result.id}
+Jumlah: ${result.count}
+Area: ${AREA}
+Waktu: ${seq_time}`;
+
+
+      popupBtn.textContent =
+        'OK';
+
+
+      popupBtn.onclick =
+        closePopup;
+
+
+      popupOverlay.classList.add(
+        'active'
+      );
+
+
+    } catch (error) {
+
+      hideLoading();
+
+
+      console.error(
+        'Save error:',
+        error
+      );
+
+
+      setMessage(
+        '❌ ' +
+        error.message,
+        'error'
+      );
+
+
+      popupIcon.textContent =
+        '❌';
+
+
+      popupTitle.textContent =
+        'Gagal!';
+
+
+      popupMessage.textContent =
+        error.message ||
+        'Tidak dapat menyimpan ke database.';
+
+
+      popupBtn.textContent =
+        'OK';
+
+
+      popupBtn.onclick =
+        closePopup;
+
+
+      popupOverlay.classList.add(
+        'active'
+      );
+
+
+    } finally {
+
+      saveDbBtn.disabled =
+        lastDetectionCount <= 0;
+
+    }
+
+  };
+
+
+/* =========================================================
+   INITIALIZE
+========================================================= */
+
 loadONNXModel();
+
 </script>
+
 </body>
 </html>
