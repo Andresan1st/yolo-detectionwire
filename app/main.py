@@ -218,7 +218,7 @@ def calculate_iou(box1, box2):
     return inter_area / union_area if union_area > 0 else 0
 
 
-def run_inference(image_bytes: bytes) -> List[dict]:
+def run_inference(image_bytes: bytes) -> tuple:
     """Run inference on image bytes"""
     if session is None:
         raise RuntimeError("Model belum diload")
@@ -233,7 +233,7 @@ def run_inference(image_bytes: bytes) -> List[dict]:
     # Postprocess
     detections = postprocess_yolo(output, ratio, pad, orig_w, orig_h)
 
-    return detections
+    return detections, orig_w, orig_h
 
 
 # =========================================================
@@ -359,12 +359,14 @@ async def detect(request: DetectionRequest):
         image_bytes = base64.b64decode(request.image_base64)
 
         # Run inference
-        detections = run_inference(image_bytes)
+        detections, orig_w, orig_h = run_inference(image_bytes)
 
         return {
             "success": True,
             "count": len(detections),
-            "detections": detections
+            "detections": detections,
+            "image_width": orig_w,
+            "image_height": orig_h
         }
 
     except Exception as e:

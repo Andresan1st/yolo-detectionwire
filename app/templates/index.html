@@ -360,8 +360,15 @@ async function detectLoop() {
       lastDetectionCount = result.count;
       count.textContent = result.count;
 
+      // Use dimensions from server response for accurate scaling
+      const nativeWidth = result.image_width || tempCanvas.width;
+      const nativeHeight = result.image_height || tempCanvas.height;
       const rect = webcamVideo.getBoundingClientRect();
-      drawDetections(overlayCanvas, result.detections, tempCanvas.width, tempCanvas.height, rect.width, rect.height);
+
+      // Clear and resize overlay
+      overlayCanvas.width = rect.width;
+      overlayCanvas.height = rect.height;
+      drawDetections(overlayCanvas, result.detections, nativeWidth, nativeHeight, rect.width, rect.height);
 
       if (result.count > 0) {
         renderDetections(result.detections);
@@ -441,8 +448,15 @@ async function processFile(file) {
     lastDetectionCount = result.count;
     count.textContent = result.count;
 
+    // Use dimensions from server response for accurate scaling
+    const nativeWidth = result.image_width || uploadCanvas.width;
+    const nativeHeight = result.image_height || uploadCanvas.height;
     const rect = uploadCanvas.getBoundingClientRect();
-    drawDetections(uploadOverlay, result.detections, uploadCanvas.width, uploadCanvas.height, rect.width, rect.height);
+
+    // Resize overlay to match display
+    uploadOverlay.width = rect.width;
+    uploadOverlay.height = rect.height;
+    drawDetections(uploadOverlay, result.detections, nativeWidth, nativeHeight, rect.width, rect.height);
 
     if (result.count > 0) {
       renderDetections(result.detections);
