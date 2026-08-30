@@ -1,53 +1,37 @@
 <!doctype html>
-
 <html lang="id">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-
-  <title>Wire Branch Counter - WebGPU</title>
-
-  <!-- ONNX Runtime Web - WebGPU -->
-
-  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.25.0/dist/ort.webgpu.min.js"></script>
-
+  <title>Wire Branch Counter</title>
+  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.17.0/dist/ort.min.js"></script>
   <style>
-    * {
-      box-sizing: border-box;
-    }
-
+    * { box-sizing: border-box; }
     :root {
       color-scheme: dark;
       font-family: 'Segoe UI', system-ui, sans-serif;
-
       --bg-primary: #0f1419;
       --bg-card: #1a1f26;
       --bg-input: #242b33;
-
       --text-primary: #e7e9ea;
       --text-secondary: #8899a6;
-
       --accent: #1d9bf0;
       --accent-green: #00ba7c;
       --accent-orange: #ff7a00;
       --accent-red: #f4212e;
-
       --border: #2f3943;
     }
-
     body {
       margin: 0;
       min-height: 100vh;
       background: var(--bg-primary);
       color: var(--text-primary);
     }
-
     main {
       max-width: 1200px;
       margin: 0 auto;
       padding: 24px;
     }
-
     header {
       display: flex;
       justify-content: space-between;
@@ -56,19 +40,8 @@
       padding-bottom: 16px;
       border-bottom: 1px solid var(--border);
     }
-
-    h1 {
-      margin: 0;
-      font-size: 28px;
-      font-weight: 700;
-    }
-
-    .subtitle {
-      margin: 4px 0 0;
-      color: var(--text-secondary);
-      font-size: 14px;
-    }
-
+    h1 { margin: 0; font-size: 28px; font-weight: 700; }
+    .subtitle { margin: 4px 0 0; color: var(--text-secondary); font-size: 14px; }
     .badge {
       padding: 8px 16px;
       border-radius: 20px;
@@ -77,21 +50,24 @@
       background: var(--bg-input);
       color: var(--text-secondary);
     }
+    .badge.connected { background: rgba(0, 186, 124, 0.2); color: var(--accent-green); }
+    .badge.disconnected { background: rgba(244, 33, 46, 0.2); color: var(--accent-red); }
 
-    .badge.connected {
-      background: rgba(0, 186, 124, 0.2);
-      color: var(--accent-green);
-    }
+    .grid { display: grid; grid-template-columns: 1fr; gap: 20px; }
 
-    .badge.disconnected {
-      background: rgba(244, 33, 46, 0.2);
-      color: var(--accent-red);
-    }
-
-    .grid {
-      display: grid;
-      grid-template-columns: 1fr;
-      gap: 20px;
+    @media (max-width: 600px) {
+      main { padding: 12px; }
+      .stats { flex-direction: column; align-items: flex-start; }
+      .number { font-size: 36px; }
+      .btn-group { flex-wrap: wrap; }
+      .btn-group button { flex: 1; min-width: 120px; }
+      .card-body { min-height: 280px; }
+      .card-header { padding: 12px 16px; }
+      .card-footer { padding: 12px 16px; }
+      h1 { font-size: 22px; }
+      .message { font-size: 12px; padding: 10px 12px; }
+      header { flex-direction: column; align-items: flex-start; gap: 10px; }
+      header > div:last-child { flex-wrap: wrap; }
     }
 
     .card {
@@ -99,3344 +75,963 @@
       border-radius: 16px;
       background: var(--bg-card);
       overflow: hidden;
+      max-width: 100%;
     }
-
     .card-header {
       padding: 16px 20px;
       border-bottom: 1px solid var(--border);
-
       display: flex;
       justify-content: space-between;
       align-items: center;
     }
-
-    .card-header h2 {
-      margin: 0;
-      font-size: 16px;
-      font-weight: 600;
-    }
-
+    .card-header h2 { margin: 0; font-size: 16px; font-weight: 600; }
     .card-body {
       aspect-ratio: 16 / 9;
       background: var(--bg-input);
-
       display: flex;
       align-items: center;
       justify-content: center;
-
       position: relative;
       min-height: 400px;
       width: 100%;
-
       overflow: hidden;
     }
-
-    #cameraContainer,
-    #uploadContainer {
-      position: relative;
-      width: 100%;
-      height: 100%;
-    }
-
-    #webcamVideo {
+    .card-body canvas {
       width: 100%;
       height: 100%;
       object-fit: contain;
-      display: block;
     }
-
-    #overlayCanvas,
-    #uploadOverlay {
-      position: absolute;
-      top: 0;
-      left: 0;
-
-      width: 100%;
-      height: 100%;
-
-      pointer-events: none;
-    }
-
-    .card-footer {
-      padding: 16px 20px;
-    }
+    .card-footer { padding: 16px 20px; }
 
     .upload-area {
       text-align: center;
       color: var(--text-secondary);
       padding: 20px;
     }
-
-    .upload-area p {
-      margin: 0 0 12px;
-    }
-
-    .upload-icon {
-      font-size: 48px;
-      margin-bottom: 12px;
-      opacity: 0.5;
-    }
+    .upload-area p { margin: 0 0 12px; }
+    .upload-icon { font-size: 48px; margin-bottom: 12px; opacity: 0.5; }
 
     button {
       border: 0;
       border-radius: 8px;
-
       padding: 12px 20px;
-
       font-size: 14px;
       font-weight: 600;
-
       cursor: pointer;
       transition: all 0.2s;
     }
-
-    button.primary {
-      background: var(--accent-green);
-      color: #000;
-    }
-
-    button.primary:hover {
-      background: #00d68f;
-    }
-
-    button.secondary {
-      background: var(--bg-input);
-      color: var(--text-primary);
-      border: 1px solid var(--border);
-    }
-
-    button.secondary:hover {
-      background: var(--border);
-    }
-
-    button:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-
-    .btn-group {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-    }
+    button.primary { background: var(--accent-green); color: #000; }
+    button.primary:hover { background: #00d68f; }
+    button.secondary { background: var(--bg-input); color: var(--text-primary); border: 1px solid var(--border); }
+    button.secondary:hover { background: var(--border); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-group { display: flex; gap: 10px; }
 
     .stats {
       display: flex;
       align-items: center;
       gap: 12px;
-
       padding: 20px;
-
       background: var(--bg-input);
       border-radius: 12px;
-
       margin-bottom: 16px;
     }
-
-    .number {
-      font-size: 48px;
-      font-weight: 800;
-
-      color: var(--accent-green);
-      line-height: 1;
-
-      min-width: 60px;
-    }
-
-    .number-label {
-      color: var(--text-secondary);
-      font-size: 14px;
-    }
+    .number { font-size: 48px; font-weight: 800; color: var(--accent-green); line-height: 1; min-width: 60px; }
+    .number-label { color: var(--text-secondary); font-size: 14px; }
 
     .message {
       padding: 12px 16px;
-
       border-radius: 8px;
-
       font-size: 14px;
-
       margin-bottom: 16px;
     }
-
-    .message.info {
-      background: rgba(29, 155, 240, 0.1);
-      color: var(--accent);
-    }
-
-    .message.success {
-      background: rgba(0, 186, 124, 0.1);
-      color: var(--accent-green);
-    }
-
-    .message.error {
-      background: rgba(244, 33, 46, 0.1);
-      color: var(--accent-red);
-    }
-
-    .message.warning {
-      background: rgba(255, 122, 0, 0.1);
-      color: var(--accent-orange);
-    }
+    .message.info { background: rgba(29, 155, 240, 0.1); color: var(--accent); }
+    .message.success { background: rgba(0, 186, 124, 0.1); color: var(--accent-green); }
+    .message.error { background: rgba(244, 33, 46, 0.1); color: var(--accent-red); }
+    .message.warning { background: rgba(255, 122, 0, 0.1); color: var(--accent-orange); }
 
     .detections-panel {
       background: var(--bg-input);
       border-radius: 12px;
-
       padding: 16px;
-
-      margin-top: 16px;
     }
-
     .detections-header {
       font-size: 14px;
       font-weight: 600;
-
       margin-bottom: 12px;
-
       color: var(--text-secondary);
     }
-
     .detection-item {
       display: flex;
       align-items: center;
-
       gap: 12px;
-
       padding: 10px 0;
-
       border-bottom: 1px solid var(--border);
     }
-
-    .detection-item:last-child {
-      border-bottom: none;
-    }
-
+    .detection-item:last-child { border-bottom: none; }
     .detection-num {
       width: 28px;
       height: 28px;
-
       background: var(--accent-green);
       color: #000;
-
       border-radius: 50%;
-
       display: flex;
       align-items: center;
       justify-content: center;
-
       font-size: 13px;
       font-weight: 700;
-
       flex-shrink: 0;
     }
-
-    .detection-info {
-      flex: 1;
+    .detection-info { flex: 1; }
+    .detection-label { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+    .detection-meta { font-size: 12px; color: var(--text-secondary); }
+    .confidence-bar {
+      width: 100px;
+      height: 8px;
+      background: var(--border);
+      border-radius: 4px;
+      overflow: hidden;
     }
-
-    .detection-label {
-      font-size: 14px;
-      font-weight: 600;
-
-      margin-bottom: 4px;
+    .confidence-fill {
+      height: 100%;
+      background: var(--accent-green);
+      border-radius: 4px;
+      transition: width 0.3s;
     }
+    .confidence-fill.high { background: var(--accent-green); }
+    .confidence-fill.medium { background: var(--accent-orange); }
+    .confidence-fill.low { background: var(--accent-red); }
 
-    .detection-meta {
-      font-size: 12px;
-      color: var(--text-secondary);
-    }
-
-    .no-detections {
-      text-align: center;
-
-      padding: 20px;
-
-      color: var(--text-secondary);
-    }
-
-    input[type="file"] {
-      display: none;
-    }
+    .no-detections { text-align: center; padding: 20px; color: var(--text-secondary); }
+    input[type="file"] { display: none; }
 
     .loading-overlay {
       position: fixed;
-
       top: 0;
       left: 0;
-
       width: 100%;
       height: 100%;
-
       background: rgba(0, 0, 0, 0.8);
-
       display: none;
-
       justify-content: center;
       align-items: center;
-
       z-index: 1000;
-
       flex-direction: column;
-
       gap: 20px;
     }
-
-    .loading-overlay.active {
-      display: flex;
-    }
-
+    .loading-overlay.active { display: flex; }
     .loading-spinner {
       width: 60px;
       height: 60px;
-
       border: 4px solid var(--border);
       border-top-color: var(--accent-green);
-
       border-radius: 50%;
-
       animation: spin 1s linear infinite;
     }
-
-    @keyframes spin {
-      to {
-        transform: rotate(360deg);
-      }
-    }
-
-    .loading-text {
-      color: var(--text-primary);
-
-      font-size: 18px;
-      font-weight: 600;
-    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-text { color: var(--text-primary); font-size: 18px; font-weight: 600; }
 
     .popup-overlay {
       position: fixed;
-
       top: 0;
       left: 0;
-
       width: 100%;
       height: 100%;
-
       background: rgba(0, 0, 0, 0.6);
-
       display: none;
-
       justify-content: center;
       align-items: center;
-
       z-index: 1001;
     }
-
-    .popup-overlay.active {
-      display: flex;
-    }
-
+    .popup-overlay.active { display: flex; }
     .popup {
       background: var(--bg-card);
-
       border: 1px solid var(--border);
-
       border-radius: 16px;
-
       padding: 32px;
-
       text-align: center;
-
       max-width: 400px;
       width: 90%;
-
       animation: popupIn 0.3s ease;
     }
-
     @keyframes popupIn {
-      from {
-        opacity: 0;
-        transform: scale(0.8);
-      }
-
-      to {
-        opacity: 1;
-        transform: scale(1);
-      }
+      from { opacity: 0; transform: scale(0.8); }
+      to { opacity: 1; transform: scale(1); }
     }
-
-    .popup-icon {
-      font-size: 64px;
-      margin-bottom: 16px;
-    }
-
-    .popup-title {
-      font-size: 24px;
-      font-weight: 700;
-      margin-bottom: 8px;
-    }
-
-    .popup-message {
-      color: var(--text-secondary);
-
-      font-size: 14px;
-
-      margin-bottom: 24px;
-
-      line-height: 1.5;
-    }
-
+    .popup-icon { font-size: 64px; margin-bottom: 16px; }
+    .popup-title { font-size: 24px; font-weight: 700; margin-bottom: 8px; }
+    .popup-message { color: var(--text-secondary); font-size: 14px; margin-bottom: 24px; line-height: 1.5; white-space: pre-line; }
     .popup-btn {
       padding: 12px 32px;
-
       border-radius: 8px;
-
       border: none;
-
       font-size: 14px;
       font-weight: 600;
-
       cursor: pointer;
+      transition: all 0.2s;
     }
+    .popup-btn.success { background: var(--accent-green); color: #000; }
+    .popup-btn.success:hover { background: #00d68f; }
 
-    .popup-btn.success {
-      background: var(--accent-green);
-      color: #000;
-    }
-
-    #modelStatus {
-      font-size: 12px;
-    }
-
-    .model-loading {
-      color: var(--accent-orange);
-    }
-
-    .model-ready {
-      color: var(--accent-green);
-    }
-
-    .model-error {
-      color: var(--accent-red);
-    }
-
-    .gpu-info {
-      margin-top: 8px;
-
-      font-size: 12px;
-
-      color: var(--text-secondary);
-    }
-
-    @media (max-width: 600px) {
-      main {
-        padding: 12px;
-      }
-
-      .number {
-        font-size: 36px;
-      }
-
-      .card-body {
-        min-height: 280px;
-      }
-
-      .card-header {
-        padding: 12px 16px;
-      }
-
-      .card-footer {
-        padding: 12px 16px;
-      }
-
-      h1 {
-        font-size: 22px;
-      }
-
-      header {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 10px;
-      }
-
-      header > div:last-child {
-        flex-wrap: wrap;
-      }
-    }
+    #modelStatus { font-size: 12px; }
+    .model-loading { color: var(--accent-orange); }
+    .model-ready { color: var(--accent-green); }
+    .model-error { color: var(--accent-red); }
   </style>
-
 </head>
-
 <body>
-
 <main>
-
   <header>
-
-```
-<div>
-
-  <h1>🔌 Wire Branch Counter</h1>
-
-  <p class="subtitle">
-    Deteksi dan hitung kawat tembaga bercabang secara real-time
-  </p>
-
-</div>
-
-<div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-
-  <span
-    class="badge"
-    style="background:var(--accent); color:#fff;"
-    id="areaBadge">
-    📍 Area: default
-  </span>
-
-  <span class="badge" id="status">
-    Connecting...
-  </span>
-
-  <span class="badge" id="modelStatus">
-    🤖 Model: Loading...
-  </span>
-
-</div>
-```
-
+    <div>
+      <h1>🔌 Wire Branch Counter</h1>
+      <p class="subtitle">Deteksi dan hitung kawat tembaga bercabang secara real-time</p>
+    </div>
+    <div style="display:flex; gap:10px; align-items:center;">
+      <span class="badge" style="background:var(--accent); color:#fff;" id="areaBadge">📍 Area: default</span>
+      <span class="badge" id="status">Connecting...</span>
+      <span class="badge" id="modelStatus">🤖 Model: Loading...</span>
+    </div>
   </header>
 
   <section class="grid">
-
-```
-<article class="card">
-
-  <div class="card-header">
-
-    <h2>📷 Webcam Live</h2>
-
-    <div style="display:flex; align-items:center; gap:16px;">
-
-      <div style="display:flex; align-items:center; gap:8px;">
-
-        <span
-          class="number"
-          id="count"
-          style="font-size:28px;">
-          0
-        </span>
-
-        <span class="number-label">
-          terdeteksi
-        </span>
-
+    <article class="card">
+      <div class="card-header">
+        <h2>📷 Webcam Live</h2>
+        <div style="display:flex; align-items:center; gap:16px;">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span class="number" id="count" style="font-size:28px;">0</span>
+            <span class="number-label">terdeteksi</span>
+          </div>
+          <span id="liveIndicator" class="badge" style="display:none; font-size:12px;">● LIVE</span>
+        </div>
       </div>
-
-      <span
-        id="liveIndicator"
-        class="badge"
-        style="display:none; font-size:12px;">
-        ● LIVE
-      </span>
-
-    </div>
-
-  </div>
-
-
-  <div class="card-body" id="inputStage">
-
-    <div
-      id="cameraContainer"
-      style="display:none;">
-
-      <video
-        id="webcamVideo"
-        autoplay
-        playsinline>
-      </video>
-
-      <canvas
-        id="overlayCanvas">
-      </canvas>
-
-    </div>
-
-
-    <div
-      class="upload-area"
-      id="uploadArea">
-
-      <div class="upload-icon">
-        📁
+      <div class="card-body" id="inputStage">
+        <div id="cameraContainer" style="display:none; position:relative; width:100%; height:100%; background:#242b33;">
+          <video id="webcamVideo" autoplay playsinline style="width:100%; height:100%; object-fit:contain;"></video>
+          <canvas id="overlayCanvas" style="position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none;"></canvas>
+        </div>
+        <div class="upload-area" id="uploadArea">
+          <div class="upload-icon">📁</div>
+          <p>Drag & drop gambar di sini</p>
+        </div>
+        <div id="uploadContainer" style="display:none; position:relative; width:100%; height:100%;">
+          <canvas id="uploadCanvas" style="width:100%; height:100%; object-fit:contain;"></canvas>
+          <canvas id="uploadOverlay" style="position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none;"></canvas>
+        </div>
+        <input type="file" id="fileInput" accept="image/*">
       </div>
-
-      <p>
-        Drag & drop gambar di sini
-      </p>
-
-    </div>
-
-
-    <div
-      id="uploadContainer"
-      style="display:none;">
-
-      <canvas id="uploadCanvas"></canvas>
-
-      <canvas id="uploadOverlay"></canvas>
-
-    </div>
-
-
-    <input
-      type="file"
-      id="fileInput"
-      accept="image/*">
-
-  </div>
-
-
-  <div class="card-footer">
-
-    <div class="btn-group">
-
-      <button
-        class="secondary"
-        id="uploadBtn">
-        📁 Pilih File
-      </button>
-
-      <button
-        class="secondary"
-        id="stopCam"
-        disabled>
-        ⏹ Berhenti
-      </button>
-
-      <button
-        class="primary"
-        id="startCam">
-        🎥 Aktifkan Kamera
-      </button>
-
-      <button
-        class="secondary"
-        id="saveDbBtn"
-        disabled
-        style="background:var(--accent); color:#fff;">
-        💾 Simpan ke DB
-      </button>
-
-    </div>
-
-
-    <div
-      class="detections-panel"
-      id="detectionsPanel"
-      style="display:none;">
-
-      <div class="detections-header">
-        📋 Detail Deteksi
+      <div class="card-footer">
+        <div class="btn-group" style="flex-wrap: wrap; gap: 8px;">
+          <button class="secondary" id="uploadBtn" disabled>📁 Pilih File</button>
+          <button class="secondary" id="stopCam" disabled>⏹ Berhenti</button>
+          <button class="primary" id="startCam" disabled>🎥 Aktifkan Kamera</button>
+          <button class="secondary" id="saveDbBtn" disabled style="background: var(--accent); color: #fff;">💾 Simpan ke DB</button>
+        </div>
+        <div class="detections-panel" id="detectionsPanel" style="display:none; margin-top:16px;">
+          <div class="detections-header">📋 Detail Deteksi</div>
+          <div id="detectionsList"></div>
+        </div>
       </div>
-
-      <div id="detectionsList"></div>
-
-    </div>
-
-  </div>
-
-</article>
-
-
-<div
-  class="message info"
-  id="message">
-
-  ⏳ Memuat model ONNX...
-
-</div>
-```
-
+    </article>
+    <div class="message info" id="message">⏳ Memuat model AI, mohon tunggu...</div>
   </section>
-
 </main>
 
-<!-- Loading -->
-
-<div
-  class="loading-overlay"
-  id="loadingOverlay">
-
+<!-- Loading Overlay -->
+<div class="loading-overlay" id="loadingOverlay">
   <div class="loading-spinner"></div>
-
-  <div
-    class="loading-text"
-    id="loadingText">
-    Memuat...
-  </div>
-
+  <div class="loading-text" id="loadingText">Memproses gambar...</div>
 </div>
 
-<!-- Popup -->
-
-<div
-  class="popup-overlay"
-  id="popupOverlay">
-
+<!-- Popup Notification -->
+<div class="popup-overlay" id="popupOverlay">
   <div class="popup">
-
-```
-<div
-  class="popup-icon"
-  id="popupIcon">
-  ✅
-</div>
-
-<div
-  class="popup-title"
-  id="popupTitle">
-  Berhasil!
-</div>
-
-<div
-  class="popup-message"
-  id="popupMessage">
-  Data berhasil disimpan.
-</div>
-
-<button
-  class="popup-btn success"
-  onclick="closePopup()">
-  OK
-</button>
-```
-
+    <div class="popup-icon" id="popupIcon">✅</div>
+    <div class="popup-title" id="popupTitle">Berhasil!</div>
+    <div class="popup-message" id="popupMessage">Data berhasil disimpan ke database.</div>
+    <button class="popup-btn success" id="popupBtn" onclick="closePopup()">OK</button>
   </div>
-
 </div>
 
 <script>
-
-/* ============================================================
-   ONNX / YOLO CONFIG
-============================================================ */
-
+// ==================== ONNX Runtime Web Setup ====================
 let session = null;
-
 let isModelReady = false;
 
-let isDetecting = false;
+// YOLO class names (sesuaikan dengan model kamu)
+const CLASS_NAMES = ['element_copper']; // Ganti sesuai model
 
-let inferenceBusy = false;
-
-
-/*
- * Model
- */
-
+// Model configuration
 const MODEL_URL = '/best.onnx';
-
-
-/*
- * YOLO11s model kamu
- */
-
 const INPUT_SIZE = 1280;
-
-
-/*
- * Threshold
- */
-
 const CONFIDENCE_THRESHOLD = 0.35;
-
 const IOU_THRESHOLD = 0.45;
-
-
-/*
- * 1 class
- */
-
-const CLASS_NAMES = [
-  'element_copper'
-];
-
-
-/* ============================================================
-   DOM
-============================================================ */
-
-const webcamVideo =
-  document.getElementById('webcamVideo');
-
-const cameraContainer =
-  document.getElementById('cameraContainer');
-
-const uploadArea =
-  document.getElementById('uploadArea');
-
-const uploadCanvas =
-  document.getElementById('uploadCanvas');
-
-const overlayCanvas =
-  document.getElementById('overlayCanvas');
-
-const uploadOverlay =
-  document.getElementById('uploadOverlay');
-
-const uploadContainer =
-  document.getElementById('uploadContainer');
-
-const fileInput =
-  document.getElementById('fileInput');
-
-const uploadBtn =
-  document.getElementById('uploadBtn');
-
-const startCam =
-  document.getElementById('startCam');
-
-const stopCam =
-  document.getElementById('stopCam');
-
-const saveDbBtn =
-  document.getElementById('saveDbBtn');
-
-const count =
-  document.getElementById('count');
-
-const message =
-  document.getElementById('message');
-
-const detectionsPanel =
-  document.getElementById('detectionsPanel');
-
-const detectionsList =
-  document.getElementById('detectionsList');
-
-const statusBadge =
-  document.getElementById('status');
-
-const liveIndicator =
-  document.getElementById('liveIndicator');
-
-const loadingOverlay =
-  document.getElementById('loadingOverlay');
-
-const loadingText =
-  document.getElementById('loadingText');
-
-const popupOverlay =
-  document.getElementById('popupOverlay');
-
-const popupIcon =
-  document.getElementById('popupIcon');
-
-const popupTitle =
-  document.getElementById('popupTitle');
-
-const popupMessage =
-  document.getElementById('popupMessage');
-
-const modelStatus =
-  document.getElementById('modelStatus');
-
-
-/* ============================================================
-   APP STATE
-============================================================ */
-
-let webcamStream = null;
-
-let detectionLoop = null;
-
-let lastDetectionCount = 0;
-
-let lastDetections = [];
-
-
-/* ============================================================
-   API
-============================================================ */
-
-const API_URL =
-  window.location.origin;
-
-
-/* ============================================================
-   AREA
-============================================================ */
-
-const pathParts =
-  window.location.pathname
-    .split('/')
-    .filter(Boolean);
-
-const AREA =
-  pathParts.length > 0
-    ? pathParts[0]
-    : 'default';
-
-document.getElementById('areaBadge').textContent =
-  '📍 Area: ' + AREA;
-
-
-/* ============================================================
-   MESSAGE
-============================================================ */
-
-function setMessage(text, type = 'info') {
-
-  message.textContent = text;
-
-  message.className =
-    'message ' + type;
-
-}
-
-
-/* ============================================================
-   LOADING
-============================================================ */
-
-function showLoading(text = 'Memproses...') {
-
-  loadingText.textContent = text;
-
-  loadingOverlay.classList.add('active');
-
-}
-
-
-function hideLoading() {
-
-  loadingOverlay.classList.remove('active');
-
-}
-
-
-/* ============================================================
-   POPUP
-============================================================ */
-
-window.closePopup = function() {
-
-  popupOverlay.classList.remove('active');
-
-};
-
-
-function showPopup(icon, title, msg) {
-
-  popupIcon.textContent = icon;
-
-  popupTitle.textContent = title;
-
-  popupMessage.textContent = msg;
-
-  popupOverlay.classList.add('active');
-
-}
-
-
-popupOverlay.onclick = function(e) {
-
-  if (e.target === popupOverlay) {
-
-    closePopup();
-
-  }
-
-};
-
-
-/* ============================================================
-   WEBGPU CHECK
-============================================================ */
-
-async function checkWebGPU() {
-
-  if (!navigator.gpu) {
-
-    throw new Error(
-      'WebGPU tidak tersedia. Gunakan Chrome/Edge terbaru.'
-    );
-
-  }
-
-
-  const adapter =
-    await navigator.gpu.requestAdapter({
-      powerPreference: 'high-performance'
-    });
-
-
-  if (!adapter) {
-
-    throw new Error(
-      'GPU adapter tidak ditemukan.'
-    );
-
-  }
-
-
-  console.log(
-    'WebGPU adapter berhasil ditemukan:',
-    adapter
-  );
-
-
-  if (adapter.info) {
-
-    console.log(
-      'GPU vendor:',
-      adapter.info.vendor
-    );
-
-    console.log(
-      'GPU architecture:',
-      adapter.info.architecture
-    );
-
-    console.log(
-      'GPU device:',
-      adapter.info.device
-    );
-
-  }
-
-
-  return adapter;
-
-}
-
-
-/* ============================================================
-   LOAD ONNX MODEL
-============================================================ */
+const MODEL_LOAD_TIMEOUT = 120000; // 2 menit — model 1280 jauh lebih besar dari 640/704
 
 async function loadONNXModel() {
+  const modelStatus = document.getElementById('modelStatus');
+  modelStatus.textContent = '🤖 Model: Loading...';
+  modelStatus.className = 'badge model-loading';
+  isModelReady = false;
+  startCam.disabled = true;
+  uploadBtn.disabled = true;
+  setMessage('⏳ Memuat model AI, mohon tunggu...', 'info');
+  showLoading('🔍 Mengunduh model AI...');
 
-  modelStatus.textContent =
-    '🤖 Model: Checking GPU...';
-
-  modelStatus.className =
-    'badge model-loading';
-
-
-  setMessage(
-    '🔍 Mengecek WebGPU...',
-    'info'
-  );
-
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), MODEL_LOAD_TIMEOUT);
 
   try {
+    // WASM multi-thread butuh SharedArrayBuffer, yang hanya aktif kalau halaman
+    // cross-origin isolated (header COOP/COEP di-set di server). Kalau tidak,
+    // paksa single-thread supaya tidak hang/gagal diam-diam.
+    const isolated = typeof self !== 'undefined' && self.crossOriginIsolated === true;
+    ort.env.wasm.numThreads = isolated ? (navigator.hardwareConcurrency || 4) : 1;
+    ort.env.wasm.loggingLevel = 'error';
+    if (!isolated) {
+      console.warn('Halaman belum cross-origin isolated (COOP/COEP belum diset di server). WASM jalan single-thread → inference lebih lambat, tapi lebih stabil.');
+    }
 
-    /*
-     * Check WebGPU
-     */
+    console.log('Mengunduh model ONNX dari:', MODEL_URL);
 
-    await checkWebGPU();
+    // Fetch manual (bukan langsung ort.InferenceSession.create(url)) supaya
+    // progres unduhan bisa ditampilkan ke user, bukan cuma teks "Loading...".
+    const response = await fetch(MODEL_URL, { signal: controller.signal, cache: 'force-cache' });
+    if (!response.ok) {
+      throw new Error(`HTTP_${response.status}`);
+    }
 
+    const contentLength = response.headers.get('content-length');
+    const total = contentLength ? parseInt(contentLength, 10) : 0;
+    let loaded = 0;
+    const chunks = [];
+    const reader = response.body.getReader();
 
-    modelStatus.textContent =
-      '🤖 Model: Loading GPU...';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      loaded += value.length;
+      const loadedMB = (loaded / 1048576).toFixed(1);
+      if (total) {
+        const pct = Math.min(100, Math.round((loaded / total) * 100));
+        showLoading(`🔍 Mengunduh model AI... ${pct}% (${loadedMB} MB)`);
+        modelStatus.textContent = `🤖 Model: ${pct}%`;
+      } else {
+        showLoading(`🔍 Mengunduh model AI... ${loadedMB} MB`);
+      }
+    }
 
+    clearTimeout(timeoutId);
 
-    setMessage(
-      '🚀 Memuat YOLO11s ke GPU...',
-      'info'
-    );
+    const modelBytes = new Uint8Array(loaded);
+    let offset = 0;
+    for (const chunk of chunks) {
+      modelBytes.set(chunk, offset);
+      offset += chunk.length;
+    }
 
+    showLoading('🔍 Menyiapkan model (compiling)...');
+    modelStatus.textContent = '🤖 Model: Compiling...';
 
-    console.log(
-      'Loading ONNX model:',
-      MODEL_URL
-    );
-
-
-    /*
-     * Create ONNX session
-     *
-     * IMPORTANT:
-     * WebGPU
-     */
-
-    session =
-      await ort.InferenceSession.create(
-        MODEL_URL,
-        {
-          executionProviders: [
-            'webgpu'
-          ],
-
-          /*
-           * Model input statis 1280x1280.
-           * Graph capture bisa membantu inference
-           * setelah warmup.
-           */
-
-          enableGraphCapture: true
-        }
-      );
-
+    session = await ort.InferenceSession.create(modelBytes, {
+      executionProviders: ['wasm', 'cpu']
+    });
 
     isModelReady = true;
+    modelStatus.textContent = '✅ Model Ready';
+    modelStatus.className = 'badge model-ready';
+    console.log('ONNX model berhasil dimuat');
+    console.log('Input names:', session.inputNames);
+    console.log('Output names:', session.outputNames);
 
-
-    modelStatus.textContent =
-      '✅ Model Ready - GPU';
-
-
-    modelStatus.className =
-      'badge model-ready';
-
-
-    setMessage(
-      '✅ YOLO11s siap menggunakan GPU.',
-      'success'
-    );
-
-
-    console.log(
-      '================================'
-    );
-
-    console.log(
-      'ONNX MODEL READY'
-    );
-
-    console.log(
-      'Input names:',
-      session.inputNames
-    );
-
-    console.log(
-      'Output names:',
-      session.outputNames
-    );
-
-    console.log(
-      'Input metadata:',
-      session.inputMetadata
-    );
-
-    console.log(
-      'Output metadata:',
-      session.outputMetadata
-    );
-
-    console.log(
-      '================================'
-    );
-
-
-    /*
-     * Warmup
-     *
-     * Ini membuat inference pertama
-     * tidak terlalu lambat.
-     */
-
-    await warmupModel();
-
+    startCam.disabled = false;
+    uploadBtn.disabled = false;
+    hideLoading();
+    setMessage('✅ Model siap. Aktifkan kamera atau upload gambar.', 'success');
 
   } catch (error) {
-
-    isModelReady = false;
-
-    console.error(
-      'ONNX GPU ERROR:',
-      error
-    );
-
-
-    modelStatus.textContent =
-      '❌ GPU Error';
-
-
-    modelStatus.className =
-      'badge model-error';
-
-
-    setMessage(
-      '❌ Gagal menjalankan ONNX WebGPU: ' +
-      error.message,
-      'error'
-    );
-
-  }
-
-}
-
-
-/* ============================================================
-   MODEL WARMUP
-============================================================ */
-
-async function warmupModel() {
-
-  if (!session) {
-
-    return;
-
-  }
-
-
-  console.log(
-    '🔥 ONNX GPU warmup...'
-  );
-
-
-  const total =
-    3 *
-    INPUT_SIZE *
-    INPUT_SIZE;
-
-
-  const dummy =
-    new Float32Array(total);
-
-
-  /*
-   * RGB black image
-   */
-
-  const tensor =
-    new ort.Tensor(
-      'float32',
-      dummy,
-      [
-        1,
-        3,
-        INPUT_SIZE,
-        INPUT_SIZE
-      ]
-    );
-
-
-  const feeds = {
-
-    [session.inputNames[0]]:
-      tensor
-
-  };
-
-
-  const start =
-    performance.now();
-
-
-  await session.run(feeds);
-
-
-  const elapsed =
-    performance.now() - start;
-
-
-  console.log(
-    `🔥 Warmup selesai: ${elapsed.toFixed(1)} ms`
-  );
-
-}
-
-
-/* ============================================================
-   PREPROCESS IMAGE
-============================================================ */
-
-function preprocessImageElement(
-  img,
-  canvas
-) {
-
-  const ctx =
-    canvas.getContext('2d', {
-      willReadFrequently: true
-    });
-
-
-  const scale =
-    Math.min(
-      INPUT_SIZE / img.width,
-      INPUT_SIZE / img.height
-    );
-
-
-  const newWidth =
-    Math.round(
-      img.width * scale
-    );
-
-
-  const newHeight =
-    Math.round(
-      img.height * scale
-    );
-
-
-  const offsetX =
-    Math.floor(
-      (INPUT_SIZE - newWidth) / 2
-    );
-
-
-  const offsetY =
-    Math.floor(
-      (INPUT_SIZE - newHeight) / 2
-    );
-
-
-  canvas.width =
-    INPUT_SIZE;
-
-  canvas.height =
-    INPUT_SIZE;
-
-
-  /*
-   * YOLO letterbox
-   */
-
-  ctx.fillStyle =
-    '#808080';
-
-  ctx.fillRect(
-    0,
-    0,
-    INPUT_SIZE,
-    INPUT_SIZE
-  );
-
-
-  ctx.drawImage(
-    img,
-    offsetX,
-    offsetY,
-    newWidth,
-    newHeight
-  );
-
-
-  const imageData =
-    ctx.getImageData(
-      0,
-      0,
-      INPUT_SIZE,
-      INPUT_SIZE
-    );
-
-
-  const data =
-    imageData.data;
-
-
-  const area =
-    INPUT_SIZE *
-    INPUT_SIZE;
-
-
-  const input =
-    new Float32Array(
-      3 * area
-    );
-
-
-  /*
-   * RGB CHW
-   */
-
-  for (
-    let i = 0;
-    i < area;
-    i++
-  ) {
-
-    input[i] =
-      data[i * 4] / 255.0;
-
-
-    input[area + i] =
-      data[i * 4 + 1] / 255.0;
-
-
-    input[2 * area + i] =
-      data[i * 4 + 2] / 255.0;
-
-  }
-
-
-  return {
-
-    tensor:
-      new ort.Tensor(
-        'float32',
-        input,
-        [
-          1,
-          3,
-          INPUT_SIZE,
-          INPUT_SIZE
-        ]
-      ),
-
-    scale: {
-
-      scale,
-
-      offsetX,
-
-      offsetY,
-
-      origWidth:
-        img.width,
-
-      origHeight:
-        img.height
-
+    clearTimeout(timeoutId);
+    hideLoading();
+    console.error('Gagal memuat model ONNX:', error);
+
+    let friendlyMsg;
+    if (error.name === 'AbortError') {
+      friendlyMsg = `Waktu unduh model habis (>${MODEL_LOAD_TIMEOUT / 1000}s). Cek koneksi internet, atau ukuran file model.onnx mungkin terlalu besar untuk koneksi ini.`;
+    } else if (String(error.message).startsWith('HTTP_404')) {
+      friendlyMsg = `File model tidak ditemukan di server (${MODEL_URL}). Pastikan best.onnx sudah ter-deploy di path tersebut.`;
+    } else if (String(error.message).startsWith('HTTP_')) {
+      friendlyMsg = `Server mengembalikan error saat mengunduh model (${error.message.replace('HTTP_', 'HTTP ')}).`;
+    } else if (/memory|out of memory|oom/i.test(String(error.message))) {
+      friendlyMsg = 'Memori browser tidak cukup untuk model 1280x1280 ini. Coba tutup tab lain, gunakan device dengan RAM lebih besar, atau kecilkan INPUT_SIZE.';
+    } else if (/sharedarraybuffer|worker/i.test(String(error.message))) {
+      friendlyMsg = 'Browser/server belum mendukung WASM multi-thread (header COOP/COEP). Coba refresh, ini biasanya masih bisa jalan single-thread.';
+    } else {
+      friendlyMsg = error.message || 'Error tidak diketahui. Cek console (F12) untuk detail.';
     }
 
-  };
+    modelStatus.textContent = '❌ Model Error';
+    modelStatus.className = 'badge model-error';
+    setMessage('❌ Gagal memuat model: ' + friendlyMsg, 'error');
+    showPopup('❌', 'Model Gagal Dimuat', friendlyMsg);
 
+    const popupBtn = document.getElementById('popupBtn');
+    popupBtn.textContent = '🔄 Coba Lagi';
+    popupBtn.onclick = () => {
+      closePopup();
+      popupBtn.textContent = 'OK';
+      popupBtn.onclick = closePopup;
+      loadONNXModel();
+    };
+  }
 }
 
+// Preprocess image for YOLO
+function preprocessImage(imgData, canvas) {
+  const ctx = canvas.getContext('2d');
+  const img = new Image();
+  img.src = imgData;
 
-/* ============================================================
-   PREPROCESS VIDEO
-============================================================ */
+  return new Promise((resolve) => {
+    img.onload = () => {
+      // Calculate scaling
+      const scale = Math.min(INPUT_SIZE / img.width, INPUT_SIZE / img.height);
+      const newWidth = img.width * scale;
+      const newHeight = img.height * scale;
+      const offsetX = (INPUT_SIZE - newWidth) / 2;
+      const offsetY = (INPUT_SIZE - newHeight) / 2;
 
-function preprocessVideo(
-  video,
-  canvas
-) {
+      // Set canvas size
+      canvas.width = INPUT_SIZE;
+      canvas.height = INPUT_SIZE;
 
-  const ctx =
-    canvas.getContext(
-      '2d',
-      {
-        willReadFrequently: true
+      // Fill with gray (letterbox)
+      ctx.fillStyle = '#808080';
+      ctx.fillRect(0, 0, INPUT_SIZE, INPUT_SIZE);
+
+      // Draw resized image
+      ctx.drawImage(img, offsetX, offsetY, newWidth, newHeight);
+
+      // Get image data and normalize
+      const imageData = ctx.getImageData(0, 0, INPUT_SIZE, INPUT_SIZE);
+      const data = imageData.data;
+
+      // Convert to float32 array (RGB format, normalized)
+      const input = new Float32Array(3 * INPUT_SIZE * INPUT_SIZE);
+      for (let i = 0; i < INPUT_SIZE * INPUT_SIZE; i++) {
+        input[i] = data[i * 4] / 255.0;           // R
+        input[i + INPUT_SIZE * INPUT_SIZE] = data[i * 4 + 1] / 255.0; // G
+        input[i + 2 * INPUT_SIZE * INPUT_SIZE] = data[i * 4 + 2] / 255.0; // B
       }
-    );
 
-
-  const videoWidth =
-    video.videoWidth;
-
-  const videoHeight =
-    video.videoHeight;
-
-
-  const scale =
-    Math.min(
-      INPUT_SIZE / videoWidth,
-      INPUT_SIZE / videoHeight
-    );
-
-
-  const newWidth =
-    Math.round(
-      videoWidth * scale
-    );
-
-
-  const newHeight =
-    Math.round(
-      videoHeight * scale
-    );
-
-
-  const offsetX =
-    Math.floor(
-      (INPUT_SIZE - newWidth) / 2
-    );
-
-
-  const offsetY =
-    Math.floor(
-      (INPUT_SIZE - newHeight) / 2
-    );
-
-
-  canvas.width =
-    INPUT_SIZE;
-
-  canvas.height =
-    INPUT_SIZE;
-
-
-  ctx.fillStyle =
-    '#808080';
-
-
-  ctx.fillRect(
-    0,
-    0,
-    INPUT_SIZE,
-    INPUT_SIZE
-  );
-
-
-  ctx.drawImage(
-    video,
-    offsetX,
-    offsetY,
-    newWidth,
-    newHeight
-  );
-
-
-  const imageData =
-    ctx.getImageData(
-      0,
-      0,
-      INPUT_SIZE,
-      INPUT_SIZE
-    );
-
-
-  const data =
-    imageData.data;
-
-
-  const area =
-    INPUT_SIZE *
-    INPUT_SIZE;
-
-
-  const input =
-    new Float32Array(
-      3 * area
-    );
-
-
-  for (
-    let i = 0;
-    i < area;
-    i++
-  ) {
-
-    input[i] =
-      data[i * 4] / 255;
-
-
-    input[area + i] =
-      data[i * 4 + 1] / 255;
-
-
-    input[2 * area + i] =
-      data[i * 4 + 2] / 255;
-
-  }
-
-
-  return {
-
-    tensor:
-      new ort.Tensor(
-        'float32',
-        input,
-        [
-          1,
-          3,
-          INPUT_SIZE,
-          INPUT_SIZE
-        ]
-      ),
-
-    scale: {
-
-      scale,
-
-      offsetX,
-
-      offsetY,
-
-      origWidth:
-        videoWidth,
-
-      origHeight:
-        videoHeight
-
-    }
-
-  };
-
+      resolve({
+        tensor: new ort.Tensor('float32', input, [1, 3, INPUT_SIZE, INPUT_SIZE]),
+        scale: { scale, offsetX, offsetY, origWidth: img.width, origHeight: img.height }
+      });
+    };
+  });
 }
 
-
-/* ============================================================
-   INFERENCE
-============================================================ */
-
-async function runInference(
-  tensor
-) {
-
-  if (
-    !session ||
-    !isModelReady
-  ) {
-
+// Run inference
+async function runInference(inputTensor) {
+  if (!session || !isModelReady) {
+    console.warn('Model not ready yet');
     return null;
-
   }
-
 
   try {
-
-    const feeds = {
-
-      [session.inputNames[0]]:
-        tensor
-
-    };
-
-
-    const start =
-      performance.now();
-
-
-    const results =
-      await session.run(
-        feeds
-      );
-
-
-    const elapsed =
-      performance.now() - start;
-
-
-    console.log(
-      `Inference: ${elapsed.toFixed(1)} ms`
-    );
-
-
-    return results[
-      session.outputNames[0]
-    ];
-
+    const feeds = { [session.inputNames[0]]: inputTensor };
+    const results = await session.run(feeds);
+    return results[session.outputNames[0]];
   } catch (error) {
-
-    console.error(
-      'Inference error:',
-      error
-    );
-
+    console.error('Inference error:', error);
     return null;
-
   }
-
 }
 
-
-/* ============================================================
-   YOLO POSTPROCESS
-============================================================ */
-
-function postprocessYOLO(
-  output,
-  scale,
-  imgWidth,
-  imgHeight
-) {
-
+// Post-process YOLO output (YOLOv8 format: [1, numValuesPerPred, N])
+function postprocessYOLO(output, scale, imgWidth, imgHeight) {
   const detections = [];
 
+  // YOLOv8 output shape: [1, numValuesPerPred, N] where:
+  // numValuesPerPred = 4 (bbox: x, y, w, h) + numClasses
+  // N (jumlah anchor) mengikuti INPUT_SIZE, dibaca langsung dari output.dims
+  const outputData = output.data;
+  const dims = output.dims;
 
-  const outputData =
-    output.data;
-
-
-  const dims =
-    output.dims;
-
-
-  console.log(
-    'YOLO output shape:',
-    dims
-  );
-
-
-  if (
-    dims.length !== 3
-  ) {
-
-    console.error(
-      'Unexpected output shape:',
-      dims
-    );
-
-    return [];
-
+  if (dims.length !== 3) {
+    console.error('Unexpected output shape:', dims);
+    return detections;
   }
 
+  const numPredictions = dims[2];
+  const numValuesPerPred = dims[1];
+  const numClasses = numValuesPerPred - 4;
 
-  /*
-   * Typical Ultralytics YOLO:
-   *
-   * [1, 4 + classes, predictions]
-   *
-   * 1 class:
-   *
-   * [1, 5, 8400]
-   */
+  for (let i = 0; i < numPredictions; i++) {
+    // Get box coordinates (first 4 values)
+    const x = outputData[i];
+    const y = outputData[numPredictions + i];
+    const w = outputData[2 * numPredictions + i];
+    const h = outputData[3 * numPredictions + i];
 
-  const numValues =
-    dims[1];
-
-  const numPredictions =
-    dims[2];
-
-
-  const numClasses =
-    numValues - 4;
-
-
-  for (
-    let i = 0;
-    i < numPredictions;
-    i++
-  ) {
-
-    const x =
-      outputData[i];
-
-
-    const y =
-      outputData[
-        numPredictions + i
-      ];
-
-
-    const w =
-      outputData[
-        2 * numPredictions + i
-      ];
-
-
-    const h =
-      outputData[
-        3 * numPredictions + i
-      ];
-
-
+    // Get class scores (remaining values)
     let maxScore = 0;
-
     let maxClass = 0;
-
-
-    for (
-      let c = 0;
-      c < numClasses;
-      c++
-    ) {
-
-      const score =
-        outputData[
-          (4 + c) *
-          numPredictions +
-          i
-        ];
-
-
-      if (
-        score > maxScore
-      ) {
-
-        maxScore =
-          score;
-
-        maxClass =
-          c;
-
+    for (let c = 0; c < numClasses; c++) {
+      const score = outputData[(4 + c) * numPredictions + i];
+      if (score > maxScore) {
+        maxScore = score;
+        maxClass = c;
       }
-
     }
 
+    if (maxScore < CONFIDENCE_THRESHOLD) continue;
 
-    if (
-      maxScore <
-      CONFIDENCE_THRESHOLD
-    ) {
-
-      continue;
-
-    }
-
-
-    /*
-     * Convert xywh -> xyxy
-     *
-     * Remove letterbox
-     */
-
-    const x1 =
-      Math.max(
-        0,
-        (
-          x - w / 2 -
-          scale.offsetX
-        ) /
-        scale.scale
-      );
-
-
-    const y1 =
-      Math.max(
-        0,
-        (
-          y - h / 2 -
-          scale.offsetY
-        ) /
-        scale.scale
-      );
-
-
-    const x2 =
-      Math.min(
-        imgWidth,
-        (
-          x + w / 2 -
-          scale.offsetX
-        ) /
-        scale.scale
-      );
-
-
-    const y2 =
-      Math.min(
-        imgHeight,
-        (
-          y + h / 2 -
-          scale.offsetY
-        ) /
-        scale.scale
-      );
-
-
-    if (
-      x2 <= x1 ||
-      y2 <= y1
-    ) {
-
-      continue;
-
-    }
-
+    // Convert center coordinates to corner coordinates
+    const x1 = Math.max(0, (x - w / 2 - scale.offsetX) / scale.scale);
+    const y1 = Math.max(0, (y - h / 2 - scale.offsetY) / scale.scale);
+    const x2 = Math.min(imgWidth, (x + w / 2 - scale.offsetX) / scale.scale);
+    const y2 = Math.min(imgHeight, (y + h / 2 - scale.offsetY) / scale.scale);
 
     detections.push({
-
-      class:
-        maxClass,
-
-      label:
-        CLASS_NAMES[maxClass]
-        ||
-        `Class ${maxClass}`,
-
-      confidence:
-        maxScore,
-
-      bbox: [
-        x1,
-        y1,
-        x2,
-        y2
-      ]
-
+      class: maxClass,
+      label: CLASS_NAMES[maxClass] || `Class ${maxClass}`,
+      confidence: maxScore,
+      bbox: [x1, y1, x2, y2]
     });
-
   }
 
-
-  return applyNMS(
-    detections,
-    IOU_THRESHOLD
-  );
-
+  // Apply NMS
+  return applyNMS(detections, IOU_THRESHOLD);
 }
 
+function applyNMS(detections, iouThreshold) {
+  if (detections.length === 0) return [];
 
-/* ============================================================
-   NMS
-============================================================ */
-
-function applyNMS(
-  detections,
-  iouThreshold
-) {
-
-  if (
-    detections.length === 0
-  ) {
-
-    return [];
-
-  }
-
-
-  detections.sort(
-    (a, b) =>
-      b.confidence -
-      a.confidence
-  );
-
+  // Sort by confidence
+  detections.sort((a, b) => b.confidence - a.confidence);
 
   const keep = [];
+  const used = new Set();
 
+  for (let i = 0; i < detections.length; i++) {
+    if (used.has(i)) continue;
 
-  const used =
-    new Set();
-
-
-  for (
-    let i = 0;
-    i < detections.length;
-    i++
-  ) {
-
-    if (
-      used.has(i)
-    ) {
-
-      continue;
-
-    }
-
-
-    keep.push(
-      detections[i]
-    );
-
-
+    keep.push(detections[i]);
     used.add(i);
 
+    for (let j = i + 1; j < detections.length; j++) {
+      if (used.has(j)) continue;
+      if (detections[j].class !== detections[i].class) continue;
 
-    for (
-      let j = i + 1;
-      j < detections.length;
-      j++
-    ) {
-
-      if (
-        used.has(j)
-      ) {
-
-        continue;
-
-      }
-
-
-      if (
-        detections[j].class !==
-        detections[i].class
-      ) {
-
-        continue;
-
-      }
-
-
-      const iou =
-        calculateIOU(
-          detections[i].bbox,
-          detections[j].bbox
-        );
-
-
-      if (
-        iou > iouThreshold
-      ) {
-
+      const iou = calculateIOU(detections[i].bbox, detections[j].bbox);
+      if (iou > iouThreshold) {
         used.add(j);
-
       }
-
     }
-
   }
-
 
   return keep;
-
 }
 
+function calculateIOU(box1, box2) {
+  const [x1, y1, x2, y2] = box1;
+  const [x3, y3, x4, y4] = box2;
 
-/* ============================================================
-   IOU
-============================================================ */
+  const interX1 = Math.max(x1, x3);
+  const interY1 = Math.max(y1, y3);
+  const interX2 = Math.min(x2, x4);
+  const interY2 = Math.min(y2, y4);
 
-function calculateIOU(
-  box1,
-  box2
-) {
+  const interArea = Math.max(0, interX2 - interX1) * Math.max(0, interY2 - interY1);
+  const box1Area = (x2 - x1) * (y2 - y1);
+  const box2Area = (x4 - x3) * (y4 - y3);
 
-  const [
-    x1,
-    y1,
-    x2,
-    y2
-  ] = box1;
-
-
-  const [
-    x3,
-    y3,
-    x4,
-    y4
-  ] = box2;
-
-
-  const interX1 =
-    Math.max(
-      x1,
-      x3
-    );
-
-
-  const interY1 =
-    Math.max(
-      y1,
-      y3
-    );
-
-
-  const interX2 =
-    Math.min(
-      x2,
-      x4
-    );
-
-
-  const interY2 =
-    Math.min(
-      y2,
-      y4
-    );
-
-
-  const interWidth =
-    Math.max(
-      0,
-      interX2 - interX1
-    );
-
-
-  const interHeight =
-    Math.max(
-      0,
-      interY2 - interY1
-    );
-
-
-  const interArea =
-    interWidth *
-    interHeight;
-
-
-  const area1 =
-    Math.max(
-      0,
-      x2 - x1
-    ) *
-    Math.max(
-      0,
-      y2 - y1
-    );
-
-
-  const area2 =
-    Math.max(
-      0,
-      x4 - x3
-    ) *
-    Math.max(
-      0,
-      y4 - y3
-    );
-
-
-  const union =
-    area1 +
-    area2 -
-    interArea;
-
-
-  if (
-    union <= 0
-  ) {
-
-    return 0;
-
-  }
-
-
-  return (
-    interArea /
-    union
-  );
-
+  return interArea / (box1Area + box2Area - interArea);
 }
 
+// Draw detections on canvas
+function drawDetections(canvas, detections, scale) {
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-/* ============================================================
-   DRAW DETECTIONS
-============================================================ */
+  const displayScale = Math.min(canvas.width / scale.origWidth, canvas.height / scale.origHeight);
+  const offsetX = (canvas.width - scale.origWidth * displayScale) / 2;
+  const offsetY = (canvas.height - scale.origHeight * displayScale) / 2;
 
-function drawDetections(
-  canvas,
-  detections,
-  scale
-) {
+  detections.forEach((det, i) => {
+    const [x1, y1, x2, y2] = det.bbox;
 
-  /*
-   * Set actual canvas resolution
-   */
+    // Scale to display size
+    const dx1 = x1 * displayScale + offsetX;
+    const dy1 = y1 * displayScale + offsetY;
+    const dx2 = x2 * displayScale + offsetX;
+    const dy2 = y2 * displayScale + offsetY;
 
-  if (
-    canvas.width !==
-    scale.origWidth
-  ) {
+    // Draw box
+    ctx.strokeStyle = '#00ba7c';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(dx1, dy1, dx2 - dx1, dy2 - dy1);
 
-    canvas.width =
-      scale.origWidth;
+    // Draw label
+    const label = `${det.label} ${(det.confidence * 100).toFixed(1)}%`;
+    ctx.fillStyle = '#00ba7c';
+    ctx.font = 'bold 14px sans-serif';
+    const textWidth = ctx.measureText(label).width;
 
-  }
-
-
-  if (
-    canvas.height !==
-    scale.origHeight
-  ) {
-
-    canvas.height =
-      scale.origHeight;
-
-  }
-
-
-  const ctx =
-    canvas.getContext('2d');
-
-
-  ctx.clearRect(
-    0,
-    0,
-    canvas.width,
-    canvas.height
-  );
-
-
-  /*
-   * Because overlay canvas has same
-   * original image/video dimensions,
-   * no additional display scaling
-   * is required.
-   */
-
-  detections.forEach(
-    (det, i) => {
-
-      const [
-        x1,
-        y1,
-        x2,
-        y2
-      ] = det.bbox;
-
-
-      ctx.strokeStyle =
-        '#00ba7c';
-
-      ctx.lineWidth =
-        3;
-
-
-      ctx.strokeRect(
-        x1,
-        y1,
-        x2 - x1,
-        y2 - y1
-      );
-
-
-      const label =
-        `${i + 1}. ${
-          det.label
-        } ${
-          (
-            det.confidence *
-            100
-          ).toFixed(1)
-        }%`;
-
-
-      ctx.font =
-        'bold 14px sans-serif';
-
-
-      const textWidth =
-        ctx.measureText(
-          label
-        ).width;
-
-
-      ctx.fillStyle =
-        '#00ba7c';
-
-
-      ctx.fillRect(
-        x1,
-        Math.max(
-          0,
-          y1 - 24
-        ),
-        textWidth + 10,
-        24
-      );
-
-
-      ctx.fillStyle =
-        '#000';
-
-
-      ctx.fillText(
-        label,
-        x1 + 5,
-        Math.max(
-          16,
-          y1 - 7
-        )
-      );
-
-    }
-  );
-
+    ctx.fillRect(dx1, dy1 - 20, textWidth + 10, 20);
+    ctx.fillStyle = '#000';
+    ctx.fillText(label, dx1 + 5, dy1 - 5);
+  });
 }
 
+// ==================== App Logic ====================
+let webcamStream = null;
+let detectionLoop = null;
+let lastDetectionCount = 0;
 
-/* ============================================================
-   RENDER DETECTIONS
-============================================================ */
+const webcamVideo = document.getElementById('webcamVideo');
+const cameraContainer = document.getElementById('cameraContainer');
+const uploadArea = document.getElementById('uploadArea');
+const uploadCanvas = document.getElementById('uploadCanvas');
+const overlayCanvas = document.getElementById('overlayCanvas');
+const uploadOverlay = document.getElementById('uploadOverlay');
+const uploadContainer = document.getElementById('uploadContainer');
+const fileInput = document.getElementById('fileInput');
+const uploadBtn = document.getElementById('uploadBtn');
+const startCam = document.getElementById('startCam');
+const stopCam = document.getElementById('stopCam');
+const saveDbBtn = document.getElementById('saveDbBtn');
+const count = document.getElementById('count');
+const message = document.getElementById('message');
+const detectionsPanel = document.getElementById('detectionsPanel');
+const detectionsList = document.getElementById('detectionsList');
+const statusBadge = document.getElementById('status');
+const liveIndicator = document.getElementById('liveIndicator');
+const loadingOverlay = document.getElementById('loadingOverlay');
+const loadingText = document.getElementById('loadingText');
+const popupOverlay = document.getElementById('popupOverlay');
+const popupIcon = document.getElementById('popupIcon');
+const popupTitle = document.getElementById('popupTitle');
+const popupMessage = document.getElementById('popupMessage');
 
-function renderDetections(
-  detections
-) {
+const API_URL = window.location.origin;
 
-  if (
-    !detections ||
-    detections.length === 0
-  ) {
+// Get area from URL
+const pathParts = window.location.pathname.split('/').filter(Boolean);
+const AREA = pathParts.length > 0 ? pathParts[0] : 'default';
+document.getElementById('areaBadge').textContent = '📍 Area: ' + AREA;
 
-    detectionsPanel.style.display =
-      'none';
-
-    return;
-
-  }
-
-
-  detectionsList.innerHTML =
-    detections
-      .map(
-        (d, i) => `
-
-          <div class="detection-item">
-
-            <div class="detection-num">
-              ${i + 1}
-            </div>
-
-            <div class="detection-info">
-
-              <div class="detection-label">
-                ${d.label}
-              </div>
-
-              <div class="detection-meta">
-                Confidence:
-                ${(d.confidence * 100).toFixed(1)}%
-              </div>
-
-            </div>
-
-          </div>
-
-        `
-      )
-      .join('');
-
-
-  detectionsPanel.style.display =
-    'block';
-
+function setMessage(text, type = 'info') {
+  message.textContent = text;
+  message.className = 'message ' + type;
 }
 
-
-/* ============================================================
-   WEBCAM
-============================================================ */
-
-const captureCanvas =
-  document.createElement('canvas');
-
-
-async function detectWebcamFrame() {
-
-  if (
-    !webcamStream ||
-    !isModelReady ||
-    !isDetecting
-  ) {
-
-    return;
-
-  }
-
-
-  /*
-   * Jangan menjalankan inference
-   * kalau inference sebelumnya belum selesai.
-   */
-
-  if (
-    inferenceBusy
-  ) {
-
-    return;
-
-  }
-
-
-  if (
-    webcamVideo.readyState <
-    2
-  ) {
-
-    return;
-
-  }
-
-
-  inferenceBusy =
-    true;
-
-
-  try {
-
-    /*
-     * Capture langsung dari video
-     *
-     * Tidak menggunakan:
-     *
-     * video -> toDataURL
-     * -> Image
-     *
-     * sehingga lebih ringan.
-     */
-
-    const {
-      tensor,
-      scale
-    } =
-      preprocessVideo(
-        webcamVideo,
-        captureCanvas
-      );
-
-
-    const output =
-      await runInference(
-        tensor
-      );
-
-
-    if (
-      output
-    ) {
-
-      const detections =
-        postprocessYOLO(
-          output,
-          scale,
-          webcamVideo.videoWidth,
-          webcamVideo.videoHeight
-        );
-
-
-      lastDetections =
-        detections;
-
-
-      lastDetectionCount =
-        detections.length;
-
-
-      count.textContent =
-        detections.length;
-
-
-      /*
-       * Overlay harus mengikuti
-       * ukuran asli video.
-       */
-
-      overlayCanvas.width =
-        webcamVideo.videoWidth;
-
-
-      overlayCanvas.height =
-        webcamVideo.videoHeight;
-
-
-      drawDetections(
-        overlayCanvas,
-        detections,
-        {
-          origWidth:
-            webcamVideo.videoWidth,
-
-          origHeight:
-            webcamVideo.videoHeight
-        }
-      );
-
-
-      if (
-        detections.length > 0
-      ) {
-
-        renderDetections(
-          detections
-        );
-
-
-        saveDbBtn.disabled =
-          false;
-
-
-        setMessage(
-          `✅ ${detections.length} objek terdeteksi`,
-          'success'
-        );
-
-      } else {
-
-        detectionsPanel.style.display =
-          'none';
-
-
-        setMessage(
-          '📹 Mendeteksi...',
-          'info'
-        );
-
-      }
-
-    }
-
-  } catch (error) {
-
-    console.error(
-      'Detection error:',
-      error
-    );
-
-  } finally {
-
-    inferenceBusy =
-      false;
-
-  }
-
+function showLoading(text = 'Memproses...') {
+  loadingText.textContent = text;
+  loadingOverlay.classList.add('active');
 }
 
-
-/* ============================================================
-   DETECTION LOOP
-============================================================ */
-
-function startDetectionLoop() {
-
-  if (
-    detectionLoop
-  ) {
-
-    cancelAnimationFrame(
-      detectionLoop
-    );
-
-  }
-
-
-  const loop =
-    async () => {
-
-      if (
-        !webcamStream ||
-        !isDetecting
-      ) {
-
-        return;
-
-      }
-
-
-      await detectWebcamFrame();
-
-
-      detectionLoop =
-        requestAnimationFrame(
-          loop
-        );
-
-    };
-
-
-  loop();
-
+function hideLoading() {
+  loadingOverlay.classList.remove('active');
 }
 
-
-/* ============================================================
-   START CAMERA
-============================================================ */
-
-startCam.onclick =
-  async function() {
-
-    try {
-
-      if (
-        !isModelReady
-      ) {
-
-        showLoading(
-          '🚀 Memuat model ke GPU...'
-        );
-
-
-        await loadONNXModel();
-
-
-        hideLoading();
-
-
-        if (
-          !isModelReady
-        ) {
-
-          return;
-
-        }
-
-      }
-
-
-      webcamStream =
-        await navigator
-          .mediaDevices
-          .getUserMedia({
-
-            video: {
-
-              width: {
-                ideal: 1280
-              },
-
-              height: {
-                ideal: 720
-              },
-
-              facingMode:
-                'environment'
-
-            },
-
-            audio: false
-
-          });
-
-
-      webcamVideo.srcObject =
-        webcamStream;
-
-
-      await webcamVideo.play();
-
-
-      cameraContainer.style.display =
-        'block';
-
-
-      uploadArea.style.display =
-        'none';
-
-
-      uploadContainer.style.display =
-        'none';
-
-
-      startCam.disabled =
-        true;
-
-
-      stopCam.disabled =
-        false;
-
-
-      liveIndicator.style.display =
-        'inline';
-
-
-      isDetecting =
-        true;
-
-
-      setMessage(
-        '🚀 Kamera aktif. YOLO berjalan di GPU...',
-        'success'
-      );
-
-
-      startDetectionLoop();
-
-
-    } catch (error) {
-
-      console.error(
-        'Camera error:',
-        error
-      );
-
-
-      hideLoading();
-
-
-      setMessage(
-        '❌ Gagal mengakses kamera: ' +
-        error.message,
-        'error'
-      );
-
-    }
-
-  };
-
-
-/* ============================================================
-   STOP CAMERA
-============================================================ */
-
-stopCam.onclick =
-  function() {
-
-    isDetecting =
-      false;
-
-
-    inferenceBusy =
-      false;
-
-
-    if (
-      detectionLoop
-    ) {
-
-      cancelAnimationFrame(
-        detectionLoop
-      );
-
-      detectionLoop =
-        null;
-
-    }
-
-
-    if (
-      webcamStream
-    ) {
-
-      webcamStream
-        .getTracks()
-        .forEach(
-          track =>
-            track.stop()
-        );
-
-
-      webcamStream =
-        null;
-
-    }
-
-
-    webcamVideo.srcObject =
-      null;
-
-
-    cameraContainer.style.display =
-      'none';
-
-
-    uploadContainer.style.display =
-      'none';
-
-
-    uploadArea.style.display =
-      'block';
-
-
-    const ctx =
-      overlayCanvas
-        .getContext('2d');
-
-
-    ctx.clearRect(
-      0,
-      0,
-      overlayCanvas.width,
-      overlayCanvas.height
-    );
-
-
-    startCam.disabled =
-      false;
-
-
-    stopCam.disabled =
-      true;
-
-
-    liveIndicator.style.display =
-      'none';
-
-
-    setMessage(
-      `⏹ Kamera berhenti. Total terakhir: ${lastDetectionCount} objek.`,
-      'info'
-    );
-
-  };
-
-
-/* ============================================================
-   UPLOAD
-============================================================ */
-
-uploadBtn.onclick =
-  function() {
-
-    fileInput.click();
-
-  };
-
-
-fileInput.onchange =
-  async function(e) {
-
-    const file =
-      e.target.files[0];
-
-
-    if (
-      file
-    ) {
-
-      await processFile(
-        file
-      );
-
-    }
-
-  };
-
-
-/* ============================================================
-   DRAG DROP
-============================================================ */
-
-uploadArea.ondragover =
-  function(e) {
-
-    e.preventDefault();
-
-    uploadArea.style.background =
-      'rgba(0, 186, 124, 0.1)';
-
-  };
-
-
-uploadArea.ondragleave =
-  function() {
-
-    uploadArea.style.background =
-      '';
-
-  };
-
-
-uploadArea.ondrop =
-  async function(e) {
-
-    e.preventDefault();
-
-
-    uploadArea.style.background =
-      '';
-
-
-    const file =
-      e.dataTransfer.files[0];
-
-
-    if (
-      file &&
-      file.type.startsWith(
-        'image/'
-      )
-    ) {
-
-      await processFile(
-        file
-      );
-
-    }
-
-  };
-
-
-/* ============================================================
-   PROCESS IMAGE FILE
-============================================================ */
-
-async function processFile(
-  file
-) {
-
-  showLoading(
-    '🔍 Menganalisis gambar dengan GPU...'
-  );
-
-
-  setMessage(
-    '⏳ Menganalisis...',
-    'info'
-  );
-
-
-  try {
-
-    /*
-     * Load model if necessary
-     */
-
-    if (
-      !isModelReady
-    ) {
-
-      await loadONNXModel();
-
-    }
-
-
-    if (
-      !isModelReady
-    ) {
-
-      throw new Error(
-        'Model ONNX belum siap.'
-      );
-
-    }
-
-
-    /*
-     * Stop camera
-     */
-
-    isDetecting =
-      false;
-
-
-    if (
-      webcamStream
-    ) {
-
-      webcamStream
-        .getTracks()
-        .forEach(
-          track =>
-            track.stop()
-        );
-
-      webcamStream =
-        null;
-
-    }
-
-
-    /*
-     * Load image
-     */
-
-    const img =
-      new Image();
-
-
-    img.src =
-      URL.createObjectURL(
-        file
-      );
-
-
-    await new Promise(
-      (resolve, reject) => {
-
-        img.onload =
-          resolve;
-
-        img.onerror =
-          reject;
-
-      }
-    );
-
-
-    /*
-     * Display image
-     */
-
-    uploadCanvas.width =
-      img.width;
-
-    uploadCanvas.height =
-      img.height;
-
-
-    const ctx =
-      uploadCanvas
-        .getContext('2d');
-
-
-    ctx.drawImage(
-      img,
-      0,
-      0
-    );
-
-
-    uploadContainer.style.display =
-      'block';
-
-
-    uploadArea.style.display =
-      'none';
-
-
-    cameraContainer.style.display =
-      'none';
-
-
-    /*
-     * Preprocess
-     */
-
-    const preprocessCanvas =
-      document.createElement(
-        'canvas'
-      );
-
-
-    const {
-      tensor,
-      scale
-    } =
-      preprocessImageElement(
-        img,
-        preprocessCanvas
-      );
-
-
-    /*
-     * Inference
-     */
-
-    const start =
-      performance.now();
-
-
-    const output =
-      await runInference(
-        tensor
-      );
-
-
-    const elapsed =
-      performance.now() -
-      start;
-
-
-    console.log(
-      `Image inference: ${elapsed.toFixed(1)} ms`
-    );
-
-
-    if (
-      output
-    ) {
-
-      const detections =
-        postprocessYOLO(
-          output,
-          scale,
-          img.width,
-          img.height
-        );
-
-
-      console.log(
-        'Detections:',
-        detections
-      );
-
-
-      lastDetections =
-        detections;
-
-
-      lastDetectionCount =
-        detections.length;
-
-
-      count.textContent =
-        detections.length;
-
-
-      uploadOverlay.width =
-        img.width;
-
-      uploadOverlay.height =
-        img.height;
-
-
-      drawDetections(
-        uploadOverlay,
-        detections,
-        {
-          origWidth:
-            img.width,
-
-          origHeight:
-            img.height
-        }
-      );
-
-
-      if (
-        detections.length > 0
-      ) {
-
-        renderDetections(
-          detections
-        );
-
-
-        saveDbBtn.disabled =
-          false;
-
-
-        setMessage(
-          `✅ Deteksi berhasil! ${detections.length} objek ditemukan.`,
-          'success'
-        );
-
-      } else {
-
-        setMessage(
-          '⚠️ Tidak ada objek terdeteksi.',
-          'warning'
-        );
-
-      }
-
-    }
-
-    URL.revokeObjectURL(
-      img.src
-    );
-
-
-  } catch (error) {
-
-    console.error(
-      'Process error:',
-      error
-    );
-
-
-    setMessage(
-      '❌ Error: ' +
-      error.message,
-      'error'
-    );
-
-  } finally {
-
-    hideLoading();
-
-  }
-
+window.closePopup = function() {
+  popupOverlay.classList.remove('active');
+};
+
+function showPopup(icon, title, msg) {
+  popupIcon.textContent = icon;
+  popupTitle.textContent = title;
+  popupMessage.textContent = msg;
+  popupOverlay.classList.add('active');
 }
 
-
-/* ============================================================
-   SAVE DATABASE
-============================================================ */
-
-saveDbBtn.onclick =
-  async function() {
-
-    if (
-      lastDetectionCount === 0
-    ) {
-
-      setMessage(
-        '⚠️ Tidak ada data untuk disimpan.',
-        'warning'
-      );
-
-      return;
-
-    }
-
-
-    showLoading(
-      '💾 Menyimpan ke database...'
-    );
-
-
-    setMessage(
-      '⏳ Menyimpan...',
-      'info'
-    );
-
-
-    saveDbBtn.disabled =
-      true;
-
-
-    const now =
-      new Date();
-
-
-    const jakartaOffset =
-      7 * 60;
-
-
-    const jakartaTime =
-      new Date(
-        now.getTime() +
-        (
-          now.getTimezoneOffset() +
-          jakartaOffset
-        ) *
-        60000
-      );
-
-
-    const dt_ins =
-      jakartaTime
-        .toISOString()
-        .split('T')[0];
-
-
-    const seq_time =
-      jakartaTime
-        .toISOString()
-        .replace('T', ' ')
-        .split('.')[0];
-
-
-    try {
-
-      const response =
-        await fetch(
-          `${API_URL}/api/save-detection`,
-          {
-
-            method:
-              'POST',
-
-            headers: {
-              'Content-Type':
-                'application/json'
-            },
-
-            body:
-              JSON.stringify({
-
-                countc:
-                  lastDetectionCount,
-
-                dt_ins,
-
-                seq_time,
-
-                area:
-                  AREA
-
-              })
-
-          }
-        );
-
-
-      const result =
-        await response.json();
-
-
-      if (
-        response.ok
-      ) {
-
-        hideLoading();
-
-
-        setMessage(
-          `✅ Tersimpan! ID: ${result.id}`,
-          'success'
-        );
-
-
-        showPopup(
-          '✅',
-          'Berhasil!',
-          `ID: ${result.id}
-Jumlah: ${result.count}
-Area: ${AREA}
-Waktu: ${seq_time}`
-        );
-
-
-      } else {
-
-        hideLoading();
-
-
-        setMessage(
-          '❌ Gagal menyimpan.',
-          'error'
-        );
-
-
-        showPopup(
-          '❌',
-          'Gagal!',
-          result.detail ||
-          'Error tidak diketahui'
-        );
-
-      }
-
-
-    } catch (error) {
-
-      hideLoading();
-
-
-      setMessage(
-        '❌ Error: ' +
-        error.message,
-        'error'
-      );
-
-
-      showPopup(
-        '❌',
-        'Gagal!',
-        'Tidak dapat terhubung ke server.'
-      );
-
-
-    } finally {
-
-      saveDbBtn.disabled =
-        false;
-
-    }
-
-  };
-
-
-/* ============================================================
-   HEALTH CHECK
-============================================================ */
-
+popupOverlay.onclick = (e) => {
+  if (e.target === popupOverlay) closePopup();
+};
+
+// Health check
 async function checkHealth() {
+  try {
+    const res = await fetch(`${API_URL}/health`);
+    if (res.ok) {
+      statusBadge.textContent = '● Connected';
+      statusBadge.className = 'badge connected';
+      return;
+    }
+  } catch {}
+  statusBadge.textContent = '○ Disconnected';
+  statusBadge.className = 'badge disconnected';
+}
+checkHealth();
+setInterval(checkHealth, 10000);
+
+// Start webcam
+startCam.onclick = async () => {
+  if (!isModelReady) {
+    setMessage('⏳ Model belum siap, mohon tunggu.', 'warning');
+    return;
+  }
 
   try {
+    webcamStream = await navigator.mediaDevices.getUserMedia({
+      video: { width: 640, height: 480 }
+    });
+    webcamVideo.srcObject = webcamStream;
 
-    const res =
-      await fetch(
-        `${API_URL}/health`
-      );
+    cameraContainer.style.display = 'block';
+    uploadArea.style.display = 'none';
+    uploadContainer.style.display = 'none';
 
+    startCam.disabled = true;
+    stopCam.disabled = false;
+    liveIndicator.style.display = 'inline';
 
-    if (
-      res.ok
-    ) {
+    setMessage('✅ Kamera aktif. Mendeteksi...', 'success');
 
-      statusBadge.textContent =
-        '● Connected';
+    // Start detection loop
+    async function detectFrame() {
+      if (!webcamStream) return;
 
+      try {
+        // Create temp canvas for capture
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = webcamVideo.videoWidth;
+        tempCanvas.height = webcamVideo.videoHeight;
+        const tempCtx = tempCanvas.getContext('2d');
+        tempCtx.drawImage(webcamVideo, 0, 0);
 
-      statusBadge.className =
-        'badge connected';
+        // Preprocess
+        const tempCanvas2 = document.createElement('canvas');
+        const { tensor, scale } = await preprocessImage(tempCanvas.toDataURL(), tempCanvas2);
 
+        // Run inference
+        const output = await runInference(tensor);
 
-      return;
+        if (output) {
+          const detections = postprocessYOLO(output, scale, webcamVideo.videoWidth, webcamVideo.videoHeight);
 
+          // Update count
+          count.textContent = detections.length;
+          lastDetectionCount = detections.length;
+
+          // Draw on overlay
+          drawDetections(overlayCanvas, detections, scale);
+
+          // Render detection list
+          if (detections.length > 0) {
+            renderDetections(detections);
+            saveDbBtn.disabled = false;
+            setMessage(`✅ ${detections.length} objek terdeteksi`, 'success');
+          } else {
+            detectionsPanel.style.display = 'none';
+            setMessage('📹 Mendeteksi...', 'info');
+          }
+        }
+      } catch (e) {
+        console.error('Detection error:', e);
+      }
+
+      detectionLoop = requestAnimationFrame(detectFrame);
     }
 
-  } catch (e) {}
+    detectFrame();
 
+  } catch (error) {
+    console.error('Camera error:', error);
+    setMessage('❌ Gagal mengakses kamera: ' + error.message, 'error');
+  }
+};
 
-  statusBadge.textContent =
-    '○ Disconnected';
+// Stop webcam
+stopCam.onclick = () => {
+  if (detectionLoop) {
+    cancelAnimationFrame(detectionLoop);
+    detectionLoop = null;
+  }
 
+  if (webcamStream) {
+    webcamStream.getTracks().forEach(track => track.stop());
+    webcamStream = null;
+  }
 
-  statusBadge.className =
-    'badge disconnected';
+  webcamVideo.srcObject = null;
+  cameraContainer.style.display = 'none';
+  uploadContainer.style.display = 'none';
+  uploadArea.style.display = 'block';
+  overlayCanvas.getContext('2d').clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
 
+  startCam.disabled = false;
+  stopCam.disabled = true;
+  liveIndicator.style.display = 'none';
+
+  setMessage(`⏹ Kamera berhenti. Total: ${lastDetectionCount} objek.`, 'info');
+};
+
+function renderDetections(detections) {
+  if (!detections || detections.length === 0) {
+    detectionsPanel.style.display = 'none';
+    return;
+  }
+
+  detectionsList.innerHTML = detections.map((d, i) => `
+    <div class="detection-item">
+      <div class="detection-num">${i + 1}</div>
+      <div class="detection-info">
+        <div class="detection-label">${d.label}</div>
+        <div class="detection-meta">Confidence: ${(d.confidence * 100).toFixed(1)}%</div>
+      </div>
+    </div>
+  `).join('');
+
+  detectionsPanel.style.display = 'block';
 }
 
-
-checkHealth();
-
-
-setInterval(
-  checkHealth,
-  10000
-);
-
-
-/* ============================================================
-   START
-============================================================ */
-
-window.addEventListener(
-  'load',
-  async function() {
-
-    /*
-     * Load model immediately.
-     */
-
-    await loadONNXModel();
-
+// Upload handlers
+uploadBtn.onclick = () => {
+  if (!isModelReady) {
+    setMessage('⏳ Model belum siap, mohon tunggu.', 'warning');
+    return;
   }
-);
+  fileInput.click();
+};
 
+fileInput.onchange = async (e) => {
+  const file = e.target.files[0];
+  if (file) await processFile(file);
+};
+
+uploadArea.ondragover = (e) => {
+  e.preventDefault();
+  uploadArea.style.background = 'rgba(0, 186, 124, 0.1)';
+};
+uploadArea.ondragleave = () => { uploadArea.style.background = ''; };
+uploadArea.ondrop = async (e) => {
+  e.preventDefault();
+  uploadArea.style.background = '';
+  if (!isModelReady) {
+    setMessage('⏳ Model belum siap, mohon tunggu.', 'warning');
+    return;
+  }
+  const file = e.dataTransfer.files[0];
+  if (file && file.type.startsWith('image/')) await processFile(file);
+};
+
+async function processFile(file) {
+  if (!isModelReady) {
+    setMessage('⏳ Model belum siap, mohon tunggu.', 'warning');
+    return;
+  }
+
+  showLoading('🔍 Menganalisis gambar...');
+  setMessage('⏳ Menganalisis...', 'info');
+
+  try {
+    // Load image
+    const img = new Image();
+    img.src = URL.createObjectURL(file);
+
+    await new Promise((resolve) => { img.onload = resolve; });
+
+    // Display on canvas
+    uploadCanvas.width = img.width;
+    uploadCanvas.height = img.height;
+    const ctx = uploadCanvas.getContext('2d');
+    ctx.drawImage(img, 0, 0);
+    uploadContainer.style.display = 'block';
+    uploadArea.style.display = 'none';
+    cameraContainer.style.display = 'none';
+
+    // Show overlay for detections
+    uploadOverlay.width = img.width;
+    uploadOverlay.height = img.height;
+    uploadOverlay.style.display = 'block';
+
+    // Preprocess
+    const preprocessCanvas = document.createElement('canvas');
+    const { tensor, scale } = await preprocessImage(uploadCanvas.toDataURL(), preprocessCanvas);
+
+    // Run inference
+    const output = await runInference(tensor);
+
+    if (output) {
+      const detections = postprocessYOLO(output, scale, img.width, img.height);
+
+      console.log('Detections:', detections);
+
+      // Draw detections on overlay
+      drawDetections(uploadOverlay, detections, { origWidth: img.width, origHeight: img.height });
+
+      // Update count
+      count.textContent = detections.length;
+      lastDetectionCount = detections.length;
+
+      if (detections.length > 0) {
+        renderDetections(detections);
+        saveDbBtn.disabled = false;
+        setMessage(`✅ Deteksi berhasil! ${detections.length} objek ditemukan.`, 'success');
+      } else {
+        setMessage('⚠️ Tidak ada objek terdeteksi.', 'warning');
+      }
+    } else {
+      setMessage('⚠️ Gagal menjalankan inference.', 'warning');
+    }
+  } catch (error) {
+    console.error('Process error:', error);
+    setMessage('❌ Error: ' + error.message, 'error');
+  } finally {
+    hideLoading();
+  }
+}
+
+// Save to DB
+document.getElementById('saveDbBtn').onclick = async () => {
+  if (lastDetectionCount === 0) {
+    setMessage('⚠️ Tidak ada data untuk disimpan.', 'warning');
+    return;
+  }
+
+  showLoading('💾 Menyimpan ke database...');
+  setMessage('⏳ Menyimpan...', 'info');
+  saveDbBtn.disabled = true;
+
+  const now = new Date();
+  const jakartaOffset = 7 * 60;
+  const jakartaTime = new Date(now.getTime() + (now.getTimezoneOffset() + jakartaOffset) * 60000);
+  const dt_ins = jakartaTime.toISOString().split('T')[0];
+  const seq_time = jakartaTime.toISOString().replace('T', ' ').split('.')[0];
+
+  try {
+    const response = await fetch(`${API_URL}/api/save-detection`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ countc: lastDetectionCount, dt_ins, seq_time, area: AREA })
+    });
+
+    const result = await response.json();
+
+    if (response.ok) {
+      hideLoading();
+      setMessage(`✅ Tersimpan! ID: ${result.id}`, 'success');
+      showPopup('✅', 'Berhasil!', `ID: ${result.id}\nJumlah: ${result.count}\nArea: ${AREA}\nWaktu: ${seq_time}`);
+    } else {
+      hideLoading();
+      setMessage('❌ Gagal menyimpan.', 'error');
+      showPopup('❌', 'Gagal!', result.detail || 'Error tidak diketahui');
+    }
+  } catch (error) {
+    hideLoading();
+    setMessage('❌ Error: ' + error.message, 'error');
+    showPopup('❌', 'Gagal!', 'Tidak dapat terhubung ke server.');
+  } finally {
+    saveDbBtn.disabled = false;
+  }
+};
+
+// Load ONNX model on start
+loadONNXModel();
 </script>
-
 </body>
 </html>
