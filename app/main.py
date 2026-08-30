@@ -471,7 +471,11 @@ async def serve_onnx_model():
     return FileResponse(
         path=str(MODEL_PATH),
         media_type="application/octet-stream",
-        filename="best.onnx"
+        filename="best.onnx",
+        headers={
+            "Cache-Control": "public, max-age=31536000, immutable",
+            "Content-Length": str(MODEL_PATH.stat().st_size)
+        }
     )
 
 
