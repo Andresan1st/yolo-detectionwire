@@ -389,7 +389,7 @@
     </div>
     <div style="display:flex; gap:10px; align-items:center;">
       <span class="badge" style="background:var(--accent); color:#fff;" id="areaBadge">📍 Area: default</span>
-      <span class="badge" id="status">Connecting...</span>
+      <span class="badge" id="status"></span>
     </div>
   </header>
 
@@ -534,6 +534,13 @@ window.addEventListener('resize', () => {
   }
 });
 
+// Also update on video resize
+if (video) {
+  video.addEventListener('resize', () => {
+    setOverlaySize();
+  });
+}
+
 async function checkHealth() {
   try {
     const res = await fetch(`${API_URL}/health`);
@@ -596,8 +603,13 @@ function setStatus(connected) {
 
 function setOverlaySize() {
   if (!overlay || !video) return;
-  overlay.width = video.videoWidth || video.clientWidth;
-  overlay.height = video.videoHeight || video.clientHeight;
+
+  // Use actual displayed size (clientWidth/clientHeight) instead of native resolution
+  const displayWidth = video.clientWidth || video.offsetWidth;
+  const displayHeight = video.clientHeight || video.offsetHeight;
+
+  overlay.width = displayWidth;
+  overlay.height = displayHeight;
 }
 
 function drawOverlay(detections) {
@@ -610,11 +622,20 @@ function drawOverlay(detections) {
 
   ctx.clearRect(0, 0, overlay.width, overlay.height);
 
+  // Get scaling factors between native video and displayed size
+  const nativeWidth = video.videoWidth || overlay.width;
+  const nativeHeight = video.videoHeight || overlay.height;
+  const displayWidth = video.clientWidth || overlay.width;
+  const displayHeight = video.clientHeight || overlay.height;
+  const scaleX = displayWidth / nativeWidth;
+  const scaleY = displayHeight / nativeHeight;
+
   detections.forEach((d) => {
-    const x1 = d.bbox.x1;
-    const y1 = d.bbox.y1;
-    const w = d.bbox.x2 - d.bbox.x1;
-    const h = d.bbox.y2 - d.bbox.y1;
+    // Scale bounding box to match displayed video size
+    const x1 = d.bbox.x1 * scaleX;
+    const y1 = d.bbox.y1 * scaleY;
+    const w = (d.bbox.x2 - d.bbox.x1) * scaleX;
+    const h = (d.bbox.y2 - d.bbox.y1) * scaleY;
 
     // Draw box - match backend (thickness 2)
     ctx.strokeStyle = '#28dc78'; // RGB from BGR(40, 220, 120)
