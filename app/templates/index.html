@@ -364,8 +364,8 @@ const CLASS_NAMES = ['wire', 'branch', 'junction']; // Ganti sesuai model
 // Model configuration
 const MODEL_URL = '/best.onnx';
 const INPUT_SIZE = 704;
-const CONFIDENCE_THRESHOLD = 0.5;
-const IOU_THRESHOLD = 0.4;
+const CONFIDENCE_THRESHOLD = 0.35;
+const IOU_THRESHOLD = 0.55;
 
 async function loadONNXModel() {
   const modelStatus = document.getElementById('modelStatus');
