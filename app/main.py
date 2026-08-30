@@ -51,8 +51,8 @@ if not MODEL_PATH.is_absolute():
 CONFIDENCE = float(os.getenv("CONFIDENCE", "0.35"))
 IOU = float(os.getenv("IOU", "0.45"))
 DEVICE = os.getenv("DEVICE", "cpu")
-MAX_FRAME_WIDTH = int(os.getenv("MAX_FRAME_WIDTH", "1280"))
-WEBSOCKET_INTERVAL = float(os.getenv("WEBSOCKET_INTERVAL", "1.0"))  # 1 second interval
+MAX_FRAME_WIDTH = int(os.getenv("MAX_FRAME_WIDTH", "416"))  # YOLO optimal = FAST!
+WEBSOCKET_INTERVAL = float(os.getenv("WEBSOCKET_INTERVAL", "0.15"))  # 150ms!
 
 # Database Configuration
 DB_HOST = os.getenv("DB_HOST", "localhost")
@@ -98,6 +98,53 @@ def decode_image(image_data: bytes) -> Optional[np.ndarray]:
     """Decode image dari bytes ke numpy array"""
     frame = cv2.imdecode(np.frombuffer(image_data, dtype=np.uint8), cv2.IMREAD_COLOR)
     return frame
+
+
+def detect_fast(frame: np.ndarray) -> list[dict]:
+    """
+    FAST detection - NO annotation, returns only detections.
+    Optimized for real-time WebSocket streaming.
+    """
+    height, width = frame.shape[:2]
+
+    # Resize jika terlalu besar
+    if width > MAX_FRAME_WIDTH:
+        scale = MAX_FRAME_WIDTH / width
+        frame = cv2.resize(frame, (MAX_FRAME_WIDTH, int(height * scale)))
+
+    # Deteksi dengan YOLO
+    model = get_model()
+    result = model.predict(frame, conf=CONFIDENCE, iou=IOU, device=DEVICE, verbose=False)[0]
+
+    # Parse hasil deteksi
+    detections = []
+    names = result.names or {}
+    boxes = result.boxes
+
+    if boxes is not None:
+        for box in boxes:
+            coordinates = box.xyxy[0].cpu().numpy().astype(int).tolist()
+            class_id = int(box.cls[0].item())
+            confidence = float(box.conf[0].item())
+            label = str(names.get(class_id, class_id))
+
+            x1, y1, x2, y2 = coordinates
+
+            detections.append({
+                "class_id": class_id,
+                "label": label,
+                "confidence": round(confidence, 3),
+                "bbox": {
+                    "x1": x1,
+                    "y1": y1,
+                    "x2": x2,
+                    "y2": y2,
+                    "width": x2 - x1,
+                    "height": y2 - y1
+                }
+            })
+
+    return detections
 
 
 def detect_in_image(frame: np.ndarray) -> tuple[list[dict], str]:
@@ -206,15 +253,6 @@ def root_ui():
     return FileResponse(TEMPLATE_DIR / "index.html")
 
 
-@app.get("/{area}")
-def root_with_area(area: str):
-    """Serve frontend HTML page with area identifier (e.g., /labqc, /produksi)"""
-    # Skip API routes
-    if area in ["api", "health", "info", "ui", "ws", "docs", "openapi.json", "redoc"]:
-        raise HTTPException(status_code=404, detail="Not found")
-    return FileResponse(TEMPLATE_DIR / "index.html")
-
-
 @app.get("/health", response_model=HealthResponse)
 def health():
     """Health check endpoint"""
@@ -226,6 +264,15 @@ def health():
         confidence=CONFIDENCE,
         iou=IOU
     )
+
+
+@app.get("/{area}")
+def root_with_area(area: str):
+    """Serve frontend HTML page with area identifier (e.g., /labqc, /produksi)"""
+    # Skip API routes
+    if area in ["api", "health", "info", "ui", "ws", "docs", "openapi.json", "redoc"]:
+        raise HTTPException(status_code=404, detail="Not found")
+    return FileResponse(TEMPLATE_DIR / "index.html")
 
 
 @app.get("/info")
@@ -350,7 +397,7 @@ async def detect_raw(image_data: bytes = Body(...)):
 
 @app.websocket("/ws/detect")
 async def websocket_detect(websocket: WebSocket):
-    """Real-time webcam detection over WebSocket."""
+    """Real-time webcam detection over WebSocket - FAST MODE (no annotation)."""
     await websocket.accept()
     try:
         while True:
@@ -363,12 +410,13 @@ async def websocket_detect(websocket: WebSocket):
                 })
                 continue
 
-            detections, annotated_base64 = detect_in_image(frame)
+            # FAST detection - no annotation
+            detections = detect_fast(frame)
             await websocket.send_json({
                 "success": True,
                 "count": len(detections),
                 "detections": detections,
-                "annotated_image": annotated_base64 if annotated_base64 else None
+                "annotated_image": None  # No annotation = FASTER!
             })
     except WebSocketDisconnect:
         return

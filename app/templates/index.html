@@ -723,11 +723,22 @@ function sendFrame() {
   if (!ws || ws.readyState !== WebSocket.OPEN || busy) return;
   if (video.readyState < 2) return;
 
+  // Resize for faster processing
+  const maxWidth = 416;
+  let width = video.videoWidth;
+  let height = video.videoHeight;
+
+  if (width > maxWidth) {
+    const scale = maxWidth / width;
+    width = maxWidth;
+    height = Math.round(height * scale);
+  }
+
   const canvas = document.createElement('canvas');
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
+  canvas.width = width;
+  canvas.height = height;
   const ctx = canvas.getContext('2d');
-  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  ctx.drawImage(video, 0, 0, width, height);
 
   canvas.toBlob((blob) => {
     if (!blob) return;
@@ -738,7 +749,7 @@ function sendFrame() {
       busy = false;
       setMessage('❌ Gagal mengirim frame: ' + error.message, 'error');
     }
-  }, 'image/jpeg', 0.85); // Higher quality for better precision
+  }, 'image/jpeg', 0.5); // Lower quality = FASTER transmission!
 }
 
 // Upload handlers and fallback detection
@@ -833,8 +844,8 @@ startCam.onclick = async () => {
 
     // Start detection immediately
     createWebSocket();
-    timer = setInterval(sendFrame, 1000); // 1 second interval
-    setMessage('📹 Kamera aktif. Mendeteksi setiap 1 detik...', 'info');
+    timer = setInterval(sendFrame, 150); // 150ms - Super FAST!
+    setMessage('📹 Kamera aktif. Mendeteksi setiap 150ms...', 'info');
   } catch (error) {
     setMessage('❌ Kamera error: ' + error.message, 'error');
   }
