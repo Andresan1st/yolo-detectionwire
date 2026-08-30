@@ -213,30 +213,26 @@ def detect_in_image(frame: np.ndarray) -> tuple[list[dict], str]:
 
 
 if WEBRTC_AVAILABLE:
+    import av
+
     class DetectionVideoTrack(VideoStreamTrack):
         """
         WebRTC Video Track that performs YOLO detection on each frame.
-        Runs detection at specified interval and returns annotated frames.
         """
+        kind = "video"
+
         def __init__(self, session_id: str):
             super().__init__()
             self.session_id = session_id
-            self._queue = asyncio.Queue()
-            self._running = True
             self._last_detection_time = 0
-            self._current_frame = None
 
         async def recv(self, frame):
-            """Receive video frame, perform detection, return annotated frame"""
-            import av
-
+            """Receive video frame, perform detection, return frame"""
             pts, time_base = await self.next_timestamp()
 
             # Convert frame to numpy for processing
-            img = frame.to_ndarray(format="bgr24")
-
-            # Store current frame for detection
-            self._current_frame = img
+            video_frame = frame
+            img = video_frame.to_ndarray(format="bgr24")
 
             # Run detection at specified interval
             current_time = time.time()
@@ -252,22 +248,19 @@ if WEBRTC_AVAILABLE:
                     session = _detection_sessions.get(self.session_id)
 
                 if session:
-                    # Convert annotated if available
-                    annotated_bytes = None
-                    if annotated_base64:
-                        annotated_bytes = base64.b64decode(annotated_base64)
-                    await session.send_detection_result(detections, count, annotated_bytes)
+                    result = {
+                        "type": "detection",
+                        "count": count,
+                        "detections": detections,
+                        "timestamp": current_time
+                    }
+                    await session.send_detection_result(detections, count, annotated_base64)
 
-            # Return the original frame (overlay will be drawn client-side)
-            # or annotated frame if we want server-side annotation
+            # Return the original frame
             new_frame = av.VideoFrame.from_ndarray(img, format="bgr24")
             new_frame.pts = pts
             new_frame.time_base = time_base
             return new_frame
-
-        def stop(self):
-            self._running = False
-            super().stop()
 
 
 # ==================== REQUEST/RESPONSE MODELS ====================
@@ -570,13 +563,16 @@ async def webrtc_offer(request: WebRTCOfferRequest):
         answer = await pc.createAnswer()
         await pc.setLocalDescription(answer)
 
-        return WebRTCOfferResponse(
-            sdp=pc.localDescription.sdp,
-            type=pc.localDescription.type,
-            session_id=session_id
-        )
+        # Return plain dict to avoid pydantic serialization issues
+        return JSONResponse({
+            "sdp": pc.localDescription.sdp,
+            "type": pc.localDescription.type,
+            "session_id": session_id
+        })
 
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         with _session_lock:
             _detection_sessions.pop(session_id, None)
         await pc.close()
