@@ -68,8 +68,8 @@ class CopperDetector:
 
     def preprocess(self, image: np.ndarray) -> np.ndarray:
         """Preprocess image for inference"""
-        # Model expects 640x1280 input (height x width)
-        input_width = 640
+        # Model expects 1280x1280 input
+        input_width = 1280
         input_height = 1280
         self.original_shape = image.shape[:2]
 
@@ -125,9 +125,9 @@ class CopperDetector:
 
                 # Convert box from center format to corner format
                 cx, cy, w, h = box
-                x1 = int((cx - w / 2) * original_shape[1] / 640)
+                x1 = int((cx - w / 2) * original_shape[1] / 1280)
                 y1 = int((cy - h / 2) * original_shape[0] / 1280)
-                x2 = int((cx + w / 2) * original_shape[1] / 640)
+                x2 = int((cx + w / 2) * original_shape[1] / 1280)
                 y2 = int((cy + h / 2) * original_shape[0] / 1280)
 
                 detections.append(Detection(
