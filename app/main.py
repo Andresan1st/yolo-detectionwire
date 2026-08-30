@@ -22,6 +22,8 @@ from pydantic import BaseModel
 
 import numpy as np
 import onnxruntime as ort
+import cv2
+from PIL import Image
 
 
 # =========================================================
@@ -103,9 +105,6 @@ def letterbox(img, new_shape=(640, 640), color=(114, 114, 114)):
 
 def preprocess_image(image_bytes: bytes) -> tuple:
     """Preprocess image for YOLO"""
-    import cv2
-    from PIL import Image
-
     # Read image
     nparr = np.frombuffer(image_bytes, np.uint8)
     img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
