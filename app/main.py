@@ -1,317 +1,339 @@
 """
-Wire Branch Counter - Server-Side Inference
-Inferens di server, browser hanya tampilkan hasil
+FastAPI Application - Copper Detection WebRTC
 """
-
 import os
 import base64
-import sqlite3
-from pathlib import Path
-from datetime import datetime
-from contextlib import asynccontextmanager
-from typing import Optional
-
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse
-from pydantic import BaseModel
-
-import numpy as np
-import onnxruntime as ort
+import uuid
 import cv2
+import numpy as np
+from datetime import datetime
+from io import BytesIO
+from typing import List, Optional
+from contextlib import asynccontextmanager
 
+from fastapi import FastAPI, UploadFile, File, HTTPException, Request
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel
+from PIL import Image
 
-# ==================== CONFIG ====================
-BASE_DIR = Path(__file__).resolve().parent
-TEMPLATES_DIR = BASE_DIR / "templates"
-MODEL_PATH = BASE_DIR / "best.onnx"
-DB_PATH = os.getenv("DB_PATH", str(BASE_DIR / "detections.db"))
-DB_TABLE = "machine_detection_copper"
+# Import app modules
+from app.database import init_database, save_detection, get_recent_detections
+from app.detector import get_detector, CopperDetector
 
-INPUT_SIZE = 1280  # Ukuran model
-CONFIDENCE = 0.35
-IOU_THRESH = 0.45
-CLASS_NAMES = ["element_copper"]
+# Configuration
+APP_DIR = os.path.dirname(os.path.abspath(__file__))
+UPLOAD_DIR = os.path.join(APP_DIR, 'uploads')
+STATIC_DIR = os.path.join(APP_DIR, 'static')
+TEMPLATES_DIR = os.path.join(APP_DIR, 'templates')
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
+def read_html_file(filename: str) -> str:
+    """Read HTML template file"""
+    filepath = os.path.join(TEMPLATES_DIR, filename)
+    with open(filepath, 'r', encoding='utf-8') as f:
+        return f.read()
 
-# ==================== ONNX SESSION ====================
-session = None
-
-def load_session():
-    global session
-    if not MODEL_PATH.exists():
-        raise FileNotFoundError(f"Model tidak ditemukan: {MODEL_PATH}")
-
-    print(f"Loading: {MODEL_PATH} ({MODEL_PATH.stat().st_size / 1024 / 1024:.1f} MB)")
-    session = ort.InferenceSession(
-        str(MODEL_PATH),
-        providers=['CUDAExecutionProvider', 'CPUExecutionProvider']
-    )
-    print(f"Providers: {session.get_providers()}")
-    print("Model loaded!")
-
-
-# ==================== INFERENCE ====================
-def letterbox_resize(image, target_size=1280):
-    """Resize image dengan letterbox, return coords untuk scaling balik"""
-    h, w = image.shape[:2]
-    scale = min(target_size / h, target_size / w)
-    new_w, new_h = int(w * scale), int(h * scale)
-
-    resized = cv2.resize(image, (new_w, new_h))
-
-    # Create canvas with gray
-    canvas = np.full((target_size, target_size, 3), 114, dtype=np.uint8)
-    x_offset = (target_size - new_w) // 2
-    y_offset = (target_size - new_h) // 2
-    canvas[y_offset:y_offset + new_h, x_offset:x_offset + new_w] = resized
-
-    return canvas, scale, (x_offset, y_offset)
-
-
-def preprocess(image_bytes):
-    """Preprocess gambar untuk inference"""
-    nparr = np.frombuffer(image_bytes, np.uint8)
-    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-
-    orig_h, orig_w = img.shape[:2]
-
-    # Letterbox resize
-    canvas, scale, pad = letterbox_resize(img, INPUT_SIZE)
-
-    # Convert BGR -> RGB -> CHW
-    rgb = cv2.cvtColor(canvas, cv2.COLOR_BGR2RGB)
-    blob = rgb.astype(np.float32) / 255.0
-    blob = blob.transpose(2, 0, 1)  # HWC -> CHW
-    blob = np.expand_dims(blob, axis=0)
-
-    return blob, scale, pad, orig_w, orig_h
-
-
-def detect(image_bytes):
-    """Jalankan deteksi"""
-    global session
-
-    # Preprocess
-    tensor, scale, pad, orig_w, orig_h = preprocess(image_bytes)
-
-    # Run inference
-    input_name = session.get_inputs()[0].name
-    output = session.run(None, {input_name: tensor})[0]
-
-    print(f"DEBUG: output shape = {output.shape}")
-
-    detections = []
-
-    # Detect format: [batch, num_predictions, 4+num_classes]
-    # or [batch, 4+num_classes, num_predictions]
-    output = output.squeeze()  # Remove batch dimension
-
-    if len(output.shape) == 2:
-        # Format: [num_predictions, 4+num_classes]
-        predictions = output
-    else:
-        # Format: [4+num_classes, num_predictions] -> transpose
-        predictions = output.T
-
-    num_values = predictions.shape[1]  # 4 + num_classes
-    num_classes = num_values - 4
-
-    print(f"DEBUG: predictions shape = {predictions.shape}, num_classes = {num_classes}")
-
-    for pred in predictions:
-        x, y, w, h = pred[:4]
-        conf = float(pred[4])
-
-        if conf < CONFIDENCE:
-            continue
-
-        # Class (for single class model, it's just the confidence)
-        if num_classes == 1:
-            class_id = 0
-        else:
-            class_scores = pred[5:5+num_classes]
-            if len(class_scores) == 0:
-                continue
-            class_id = int(np.argmax(class_scores))
-
-        # Convert center -> corner
-        x1 = x - w / 2
-        y1 = y - h / 2
-        x2 = x + w / 2
-        y2 = y + h / 2
-
-        # Remove padding & scale back to original
-        pad_x, pad_y = pad
-        x1 = (x1 - pad_x) / scale
-        y1 = (y1 - pad_y) / scale
-        x2 = (x2 - pad_x) / scale
-        y2 = (y2 - pad_y) / scale
-
-        # Clip
-        x1 = max(0, min(orig_w, x1))
-        y1 = max(0, min(orig_h, y1))
-        x2 = max(0, min(orig_w, x2))
-        y2 = max(0, min(orig_h, y2))
-
-        if x2 > x1 and y2 > y1:
-            detections.append({
-                "bbox": [float(x1), float(y1), float(x2), float(y2)],
-                "confidence": conf,
-                "class_id": class_id,
-                "label": CLASS_NAMES[class_id] if class_id < len(CLASS_NAMES) else f"class_{class_id}"
-            })
-
-    # NMS
-    detections = nms(detections, IOU_THRESH)
-
-    return detections, orig_w, orig_h
-
-
-def nms(detections, iou_thresh):
-    """Non-Maximum Suppression"""
-    if not detections:
-        return []
-
-    # Sort by confidence
-    detections = sorted(detections, key=lambda x: x["confidence"], reverse=True)
-    keep = []
-
-    for det in detections:
-        skip = False
-        for kept in keep:
-            if det["class_id"] != kept["class_id"]:
-                continue
-            iou = calc_iou(det["bbox"], kept["bbox"])
-            if iou > iou_thresh:
-                skip = True
-                break
-        if not skip:
-            keep.append(det)
-
-    return keep
-
-
-def calc_iou(box1, box2):
-    """Calculate IoU"""
-    x1 = max(box1[0], box2[0])
-    y1 = max(box1[1], box2[1])
-    x2 = min(box1[2], box2[2])
-    y2 = min(box1[3], box2[3])
-
-    inter = max(0, x2 - x1) * max(0, y2 - y1)
-    area1 = (box1[2] - box1[0]) * (box1[3] - box1[1])
-    area2 = (box2[2] - box2[0]) * (box2[3] - box2[1])
-
-    return inter / (area1 + area2 - inter) if (area1 + area2 - inter) > 0 else 0
-
-
-# ==================== DATABASE ====================
-def init_db():
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute(f"""CREATE TABLE IF NOT EXISTS {DB_TABLE} (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        countc INTEGER NOT NULL,
-        dt_ins TEXT NOT NULL,
-        seq_time TEXT NOT NULL,
-        area TEXT NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )""")
-    conn.commit()
-    conn.close()
-
-
-# ==================== LIFESPAN ====================
+# Lifespan for startup/shutdown
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print("=" * 50)
-    print("🔌 Wire Branch Counter")
-    print("=" * 50)
-    init_db()
-    print("✅ DB ready")
-    try:
-        load_session()
-    except Exception as e:
-        print(f"❌ Model error: {e}")
-    print("=" * 50 + "\n")
+    """Application lifespan events"""
+    # Startup
+    print("🚀 Starting Copper Detection API...")
+    init_database()
+    print("✅ Database initialized")
+
+    # Initialize detector
+    detector = get_detector()
+    if detector.session:
+        print("✅ ONNX Model loaded")
+    else:
+        print("⚠️ ONNX Model not found - detection will be simulated")
+
     yield
-    print("👋 Shutdown")
 
+    # Shutdown
+    print("👋 Shutting down...")
 
-# ==================== APP ====================
-app = FastAPI(title="Wire Branch Counter", lifespan=lifespan)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+# Create FastAPI app
+app = FastAPI(
+    title="Copper Detection API",
+    description="WebRTC Camera Detection for Copper Elements",
+    version="1.0.0",
+    lifespan=lifespan
 )
 
+# Static files and templates
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
+templates = Jinja2Templates(directory=TEMPLATES_DIR)
+
+# Pydantic models
+class DetectionResult(BaseModel):
+    id: int
+    timestamp: str
+    detection_count: int
+    confidence_avg: float
+    element_type: str
+    status: str
+    camera_source: Optional[str] = None
+
+class DetectionResponse(BaseModel):
+    detections: int
+    confidence_avg: float
+    element: str
+    status: str
+    saved_id: Optional[int] = None
+
+class FrameDetectionRequest(BaseModel):
+    image: str  # Base64 encoded image
+    camera_source: str = "webcam"
 
 # ==================== ROUTES ====================
-@app.get("/")
+
+@app.get("/", response_class=HTMLResponse)
 async def root():
-    return FileResponse(str(TEMPLATES_DIR / "index.html"))
+    """Serve main page"""
+    return HTMLResponse(content=read_html_file("index.html"))
 
+@app.get("/camera", response_class=HTMLResponse)
+async def camera_page():
+    """Serve camera detection page"""
+    return HTMLResponse(content=read_html_file("camera.html"))
 
-@app.get("/health")
-async def health():
-    return {
-        "status": "ok",
-        "model": "onnx",
-        "inference": "server_side"
-    }
+@app.get("/upload", response_class=HTMLResponse)
+async def upload_page():
+    """Serve upload page"""
+    return HTMLResponse(content=read_html_file("upload.html"))
 
+@app.get("/history", response_class=HTMLResponse)
+async def history_page():
+    """Serve detection history page"""
+    return HTMLResponse(content=read_html_file("history.html"))
 
-class DetectRequest(BaseModel):
-    image: str  # base64
+# ==================== API ENDPOINTS ====================
 
+@app.post("/api/detect/frame")
+async def detect_frame(data: FrameDetectionRequest):
+    """Detect copper in a single frame from WebRTC
 
-@app.post("/api/detect")
-async def detect_api(req: DetectRequest):
+    Args:
+        data: JSON with base64 encoded image
+
+    Returns:
+        Detection results
+    """
     try:
-        image_bytes = base64.b64decode(req.image)
-        detections, width, height = detect(image_bytes)
+        # Decode base64 image
+        image_data = base64.b64decode(data.image.split(',')[1] if ',' in data.image else data.image)
+        nparr = np.frombuffer(image_data, np.uint8)
+        image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
+        if image is None:
+            raise HTTPException(status_code=400, detail="Invalid image data")
+
+        # Run detection
+        detector = get_detector()
+        detections = detector.detect(image)
+
+        # Calculate stats
+        detection_count = len(detections)
+        confidence_avg = np.mean([d.confidence for d in detections]) if detections else 0.0
+
+        # Save to database
+        saved_id = save_detection({
+            'detection_count': detection_count,
+            'confidence_avg': float(confidence_avg),
+            'element_type': 'copper',
+            'status': 'detected' if detection_count > 0 else 'not_found',
+            'camera_source': data.camera_source,
+        })
+
+        return DetectionResponse(
+            detections=detection_count,
+            confidence_avg=float(confidence_avg),
+            element='copper',
+            status='detected' if detection_count > 0 else 'not_found',
+            saved_id=saved_id
+        )
+
+    except Exception as e:
+        print(f"Detection error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/detect/image")
+async def detect_image(file: UploadFile = File(...)):
+    """Upload and detect copper in an image
+
+    Args:
+        file: Image file upload
+
+    Returns:
+        Detection results with saved image path
+    """
+    try:
+        # Validate file type
+        if not file.content_type.startswith('image/'):
+            raise HTTPException(status_code=400, detail="File must be an image")
+
+        # Read image
+        contents = await file.read()
+        nparr = np.frombuffer(contents, np.uint8)
+        image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
+        if image is None:
+            raise HTTPException(status_code=400, detail="Invalid image file")
+
+        # Save uploaded image
+        filename = f"{uuid.uuid4()}.jpg"
+        filepath = os.path.join(UPLOAD_DIR, filename)
+        cv2.imwrite(filepath, image)
+
+        # Run detection
+        detector = get_detector()
+        detections = detector.detect(image)
+
+        # Draw detections on image
+        result_image = detector.draw_detections(image, detections)
+
+        # Save result image
+        result_filename = f"result_{filename}"
+        result_filepath = os.path.join(UPLOAD_DIR, result_filename)
+        cv2.imwrite(result_filepath, result_image)
+
+        # Calculate stats
+        detection_count = len(detections)
+        confidence_avg = np.mean([d.confidence for d in detections]) if detections else 0.0
+
+        # Save to database
+        saved_id = save_detection({
+            'detection_count': detection_count,
+            'confidence_avg': float(confidence_avg),
+            'image_path': result_filepath,
+            'element_type': 'copper',
+            'status': 'detected' if detection_count > 0 else 'not_found',
+        })
+
+        # Convert result image to base64
+        _, buffer = cv2.imencode('.jpg', result_image)
+        result_base64 = base64.b64encode(buffer).decode()
+
         return {
-            "success": True,
-            "count": len(detections),
-            "detections": detections,
-            "image_width": width,
-            "image_height": height
+            "detections": detection_count,
+            "confidence_avg": float(confidence_avg),
+            "element": "copper",
+            "status": "detected" if detection_count > 0 else "not_found",
+            "saved_id": saved_id,
+            "image_path": f"/uploads/{result_filename}",
+            "result_image": f"data:image/jpeg;base64,{result_base64}"
         }
+
+    except HTTPException:
+        raise
     except Exception as e:
+        print(f"Upload detection error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/detections", response_model=List[DetectionResult])
+async def get_detections(limit: int = 50):
+    """Get recent detection records
 
-@app.post("/api/save")
-async def save_api(area: str, countc: int, dt_ins: str, seq_time: str):
+    Args:
+        limit: Maximum number of records to return
+
+    Returns:
+        List of detection records
+    """
     try:
-        conn = sqlite3.connect(DB_PATH)
-        c = conn.cursor()
-        c.execute(f"INSERT INTO {DB_TABLE} (countc, dt_ins, seq_time, area) VALUES (?,?,?,?)",
-                  (countc, dt_ins, seq_time, area))
-        conn.commit()
-        id = c.lastrowid
-        conn.close()
-        return {"success": True, "id": id}
+        detections = get_recent_detections(limit)
+
+        # Convert datetime objects to strings
+        for det in detections:
+            if det.get('timestamp'):
+                det['timestamp'] = str(det['timestamp'])
+            if det.get('created_at'):
+                det['created_at'] = str(det['created_at'])
+
+        return detections
+
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"Get detections error: {e}")
+        return []
 
+@app.get("/api/stats")
+async def get_stats():
+    """Get detection statistics"""
+    try:
+        detections = get_recent_detections(1000)
 
-@app.get("/api/history")
-async def history(limit: int = 100):
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    c = conn.cursor()
-    c.execute(f"SELECT * FROM {DB_TABLE} ORDER BY id DESC LIMIT ?", (limit,))
-    rows = c.fetchall()
-    conn.close()
-    return {"success": True, "data": [dict(r) for r in rows]}
+        if not detections:
+            return {
+                "total_detections": 0,
+                "avg_confidence": 0,
+                "detection_rate": 0,
+                "recent_count": 0
+            }
 
+        total = len(detections)
+        detected = sum(1 for d in detections if d.get('status') == 'detected')
+        avg_conf = np.mean([d.get('confidence_avg', 0) for d in detections])
+
+        # Last 24 hours
+        from datetime import timedelta
+        recent = sum(1 for d in detections
+                    if d.get('timestamp') and
+                    datetime.now() - d['timestamp'] < timedelta(hours=24))
+
+        return {
+            "total_detections": total,
+            "avg_confidence": round(float(avg_conf), 3),
+            "detection_rate": round(detected / total * 100, 1) if total > 0 else 0,
+            "recent_count": recent
+        }
+
+    except Exception as e:
+        print(f"Stats error: {e}")
+        return {
+            "total_detections": 0,
+            "avg_confidence": 0,
+            "detection_rate": 0,
+            "recent_count": 0
+        }
+
+@app.get("/uploads/{filename}")
+async def get_upload(filename: str):
+    """Serve uploaded files"""
+    filepath = os.path.join(UPLOAD_DIR, filename)
+    if not os.path.exists(filepath):
+        raise HTTPException(status_code=404, detail="File not found")
+
+    return StreamingResponse(
+        open(filepath, "rb"),
+        media_type="image/jpeg"
+    )
+
+# ==================== MAIN ====================
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+
+    host = os.getenv("HOST", "0.0.0.0")
+    port = int(os.getenv("PORT", 8000))
+
+    print(f"""
+    ╔══════════════════════════════════════════════════════╗
+    ║     Copper Detection API - WebRTC Camera             ║
+    ╠══════════════════════════════════════════════════════╣
+    ║  Local:    http://localhost:{port}                     ║
+    ║  Network:  http://{host}:{port}                    ║
+    ╠══════════════════════════════════════════════════════╣
+    ║  Endpoints:                                          ║
+    ║  • /          - Main page                           ║
+    ║  • /camera    - WebRTC Camera detection             ║
+    ║  • /upload    - Image upload detection              ║
+    ║  • /history   - Detection history                   ║
+    ╚══════════════════════════════════════════════════════╝
+    """)
+
+    uvicorn.run("main:app", host=host, port=port, reload=True)

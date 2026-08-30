@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Camera Detection - Copper Detection</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            color: #fff;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            margin-bottom: 20px;
+        }
+
+        header h1 {
+            color: #e94560;
+            font-size: 1.8rem;
+        }
+
+        .back-btn {
+            background: rgba(233, 69, 96, 0.2);
+            color: #e94560;
+            padding: 10px 20px;
+            border-radius: 8px;
+            text-decoration: none;
+            transition: all 0.3s;
+        }
+
+        .back-btn:hover {
+            background: #e94560;
+            color: #fff;
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 20px;
+        }
+
+        @media (max-width: 1024px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .video-container {
+            background: #000;
+            border-radius: 15px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        #videoElement {
+            width: 100%;
+            display: block;
+        }
+
+        #canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .btn {
+            flex: 1;
+            padding: 15px;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+
+        .btn-start {
+            background: #4CAF50;
+            color: #fff;
+        }
+
+        .btn-start:hover {
+            background: #45a049;
+        }
+
+        .btn-stop {
+            background: #f44336;
+            color: #fff;
+        }
+
+        .btn-stop:hover {
+            background: #d32f2f;
+        }
+
+        .btn-screenshot {
+            background: #2196F3;
+            color: #fff;
+        }
+
+        .btn-screenshot:hover {
+            background: #1976D2;
+        }
+
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .panel {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 15px;
+            padding: 20px;
+        }
+
+        .panel h3 {
+            color: #e94560;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #666;
+        }
+
+        .status-indicator.active {
+            background: #4CAF50;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+
+        .stat-item {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+        }
+
+        .stat-item .value {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #e94560;
+        }
+
+        .stat-item .label {
+            font-size: 0.8rem;
+            color: #888;
+            margin-top: 5px;
+        }
+
+        .detection-list {
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .detection-item {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 10px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .detection-item.found {
+            border-left: 3px solid #4CAF50;
+        }
+
+        .detection-item.not-found {
+            border-left: 3px solid #f44336;
+        }
+
+        .detection-time {
+            font-size: 0.8rem;
+            color: #888;
+        }
+
+        .camera-select {
+            width: 100%;
+            padding: 12px;
+            border-radius: 8px;
+            background: rgba(0, 0, 0, 0.3);
+            color: #fff;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            margin-bottom: 15px;
+        }
+
+        .camera-select option {
+            background: #1a1a2e;
+        }
+
+        .screenshot-preview {
+            display: none;
+            margin-top: 15px;
+        }
+
+        .screenshot-preview img {
+            width: 100%;
+            border-radius: 10px;
+        }
+
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.8);
+            padding: 20px 40px;
+            border-radius: 10px;
+            display: none;
+        }
+
+        .loading.show {
+            display: block;
+        }
+
+        .error-message {
+            background: rgba(244, 67, 54, 0.2);
+            border: 1px solid #f44336;
+            color: #f44336;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .error-message.show {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📷 Camera Detection</h1>
+            <a href="/" class="back-btn">← Back to Home</a>
+        </header>
+
+        <div class="error-message" id="errorMessage">
+            Camera access denied. Please allow camera permissions.
+        </div>
+
+        <div class="main-content">
+            <div class="video-section">
+                <div class="video-container">
+                    <video id="videoElement" autoplay playsinline></video>
+                    <canvas id="canvas"></canvas>
+                    <div class="loading" id="loading">Processing...</div>
+                </div>
+
+                <div class="controls">
+                    <select class="camera-select" id="cameraSelect">
+                        <option value="">Select Camera...</option>
+                    </select>
+                </div>
+
+                <div class="controls">
+                    <button class="btn btn-start" id="startBtn">▶ Start Detection</button>
+                    <button class="btn btn-stop" id="stopBtn" disabled>⏹ Stop Detection</button>
+                    <button class="btn btn-screenshot" id="captureBtn">📸 Capture</button>
+                </div>
+
+                <div class="screenshot-preview" id="screenshotPreview">
+                    <img id="screenshotImage" alt="Screenshot">
+                </div>
+            </div>
+
+            <div class="sidebar">
+                <div class="panel">
+                    <h3>
+                        <span class="status-indicator" id="statusIndicator"></span>
+                        Status
+                    </h3>
+                    <div class="stats-grid">
+                        <div class="stat-item">
+                            <div class="value" id="detectionCount">0</div>
+                            <div class="label">Objects Found</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="value" id="avgConfidence">0%</div>
+                            <div class="label">Avg Confidence</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="value" id="fpsCount">0</div>
+                            <div class="label">FPS</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="value" id="totalFrames">0</div>
+                            <div class="label">Frames</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="panel">
+                    <h3>📋 Recent Detections</h3>
+                    <div class="detection-list" id="detectionList">
+                        <div class="detection-item not-found">
+                            <span>Waiting for detections...</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="panel">
+                    <h3>⚙️ Settings</h3>
+                    <label style="display: block; margin-bottom: 10px;">
+                        Detection Interval (ms):
+                        <input type="number" id="intervalInput" value="200" min="50" max="2000" step="50"
+                               style="width: 100%; padding: 8px; margin-top: 5px; border-radius: 5px; background: rgba(0,0,0,0.3); color: #fff; border: 1px solid rgba(255,255,255,0.1);">
+                    </label>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // State
+        let stream = null;
+        let isDetecting = false;
+        let detectionInterval = null;
+        let frameCount = 0;
+        let lastFrameTime = Date.now();
+        let fps = 0;
+
+        // DOM Elements
+        const video = document.getElementById('videoElement');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const captureBtn = document.getElementById('captureBtn');
+        const cameraSelect = document.getElementById('cameraSelect');
+        const statusIndicator = document.getElementById('statusIndicator');
+        const errorMessage = document.getElementById('errorMessage');
+        const loading = document.getElementById('loading');
+
+        // Stats Elements
+        const detectionCountEl = document.getElementById('detectionCount');
+        const avgConfidenceEl = document.getElementById('avgConfidence');
+        const fpsCountEl = document.getElementById('fpsCount');
+        const totalFramesEl = document.getElementById('totalFrames');
+        const detectionListEl = document.getElementById('detectionList');
+        const intervalInput = document.getElementById('intervalInput');
+
+        // Populate camera list
+        async function populateCameras() {
+            try {
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const videoDevices = devices.filter(device => device.kind === 'videoinput');
+
+                cameraSelect.innerHTML = '<option value="">Select Camera...</option>';
+                videoDevices.forEach((device, index) => {
+                    const option = document.createElement('option');
+                    option.value = device.deviceId;
+                    option.textContent = device.label || `Camera ${index + 1}`;
+                    cameraSelect.appendChild(option);
+                });
+            } catch (error) {
+                console.error('Error listing cameras:', error);
+            }
+        }
+
+        // Start camera
+        async function startCamera(deviceId = null) {
+            try {
+                const constraints = {
+                    video: {
+                        deviceId: deviceId ? { exact: deviceId } : undefined,
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    }
+                };
+
+                stream = await navigator.mediaDevices.getUserMedia(constraints);
+                video.srcObject = stream;
+
+                video.onloadedmetadata = () => {
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                };
+
+                await populateCameras();
+                errorMessage.classList.remove('show');
+
+            } catch (error) {
+                console.error('Camera error:', error);
+                errorMessage.classList.add('show');
+            }
+        }
+
+        // Stop camera
+        function stopCamera() {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+                stream = null;
+            }
+            video.srcObject = null;
+        }
+
+        // Start detection
+        function startDetection() {
+            if (isDetecting) return;
+
+            isDetecting = true;
+            startBtn.disabled = true;
+            stopBtn.disabled = false;
+            statusIndicator.classList.add('active');
+
+            const interval = parseInt(intervalInput.value) || 200;
+
+            detectionInterval = setInterval(detectFrame, interval);
+        }
+
+        // Stop detection
+        function stopDetection() {
+            isDetecting = false;
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+            statusIndicator.classList.remove('active');
+
+            if (detectionInterval) {
+                clearInterval(detectionInterval);
+                detectionInterval = null;
+            }
+        }
+
+        // Detect frame
+        async function detectFrame() {
+            if (!video.videoWidth) return;
+
+            // Calculate FPS
+            const now = Date.now();
+            frameCount++;
+            if (now - lastFrameTime >= 1000) {
+                fps = frameCount;
+                frameCount = 0;
+                lastFrameTime = now;
+                fpsCountEl.textContent = fps;
+            }
+            totalFramesEl.textContent = parseInt(totalFramesEl.textContent) + 1;
+
+            // Capture frame
+            ctx.drawImage(video, 0, 0);
+            const frameData = canvas.toDataURL('image/jpeg', 0.8);
+
+            try {
+                loading.classList.add('show');
+
+                const response = await fetch('/api/detect/frame', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        image: frameData,
+                        camera_source: 'webcam'
+                    })
+                });
+
+                const result = await response.json();
+
+                loading.classList.remove('show');
+
+                // Update stats
+                detectionCountEl.textContent = result.detections;
+                avgConfidenceEl.textContent = (result.confidence_avg * 100).toFixed(1) + '%';
+
+                // Add to detection list
+                addDetectionToList(result);
+
+            } catch (error) {
+                loading.classList.remove('show');
+                console.error('Detection error:', error);
+            }
+        }
+
+        // Add detection to list
+        function addDetectionToList(result) {
+            const time = new Date().toLocaleTimeString();
+            const status = result.status === 'detected' ? 'found' : 'not-found';
+            const statusText = result.status === 'detected' ? 'Copper Found' : 'No Copper';
+
+            const item = document.createElement('div');
+            item.className = `detection-item ${status}`;
+            item.innerHTML = `
+                <div>
+                    <strong>${statusText}</strong>
+                    <div class="detection-time">${time}</div>
+                </div>
+                <div>
+                    ${result.detections} | ${(result.confidence_avg * 100).toFixed(1)}%
+                </div>
+            `;
+
+            // Remove placeholder if exists
+            if (detectionListEl.querySelector('.not-found')) {
+                detectionListEl.innerHTML = '';
+            }
+
+            // Add to top
+            detectionListEl.insertBefore(item, detectionListEl.firstChild);
+
+            // Limit list size
+            while (detectionListEl.children.length > 10) {
+                detectionListEl.removeChild(detectionListEl.lastChild);
+            }
+        }
+
+        // Capture screenshot
+        function captureScreenshot() {
+            ctx.drawImage(video, 0, 0);
+
+            // Send to API
+            const frameData = canvas.toDataURL('image/jpeg', 0.9);
+
+            const screenshotPreview = document.getElementById('screenshotPreview');
+            const screenshotImage = document.getElementById('screenshotImage');
+
+            screenshotImage.src = frameData;
+            screenshotPreview.style.display = 'block';
+
+            // Also send to detection API
+            detectFrame();
+        }
+
+        // Event Listeners
+        cameraSelect.addEventListener('change', (e) => {
+            if (e.target.value) {
+                stopCamera();
+                startCamera(e.target.value);
+            }
+        });
+
+        startBtn.addEventListener('click', startDetection);
+        stopBtn.addEventListener('click', stopDetection);
+        captureBtn.addEventListener('click', captureScreenshot);
+
+        intervalInput.addEventListener('change', () => {
+            if (isDetecting) {
+                stopDetection();
+                startDetection();
+            }
+        });
+
+        // Initialize
+        startCamera();
+    </script>
+</body>
+</html>
