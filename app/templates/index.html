@@ -31,10 +31,11 @@
     .card { border: 1px solid var(--border); border-radius: 16px; background: var(--bg-card); overflow: hidden; }
     .card-header { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
     .card-header h2 { font-size: 16px; font-weight: 600; }
-    .card-body { position: relative; width: 100%; min-height: 400px; background: var(--bg-input); }
+    .card-body { position: relative; width: 100%; min-height: 400px; background: var(--bg-input); display: flex; align-items: center; justify-content: center; }
     .card-footer { padding: 16px 20px; }
-    #webcamVideo, #uploadCanvas { width: 100%; height: 100%; object-fit: contain; display: block; position: absolute; top: 0; left: 0; }
-    #overlayCanvas, #uploadOverlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+    .media-container { position: relative; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
+    #webcamVideo, #uploadCanvas { max-width: 100%; max-height: 100%; display: block; }
+    #overlayCanvas, #uploadOverlay { position: absolute; pointer-events: none; width: 100%; height: 100%; }
     .upload-area { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; color: var(--text-secondary); cursor: pointer; }
     .upload-area.dragover { background: rgba(0, 186, 124, 0.1); }
     .upload-area p { margin-bottom: 12px; }
@@ -112,11 +113,11 @@
       </div>
     </div>
     <div class="card-body" id="inputStage">
-      <div id="cameraContainer" style="display:none;position:absolute;inset:0">
+      <div id="cameraContainer" style="display:none;position:relative;">
         <video id="webcamVideo" autoplay playsinline></video>
         <canvas id="overlayCanvas"></canvas>
       </div>
-      <div id="uploadContainer" style="display:none;position:absolute;inset:0">
+      <div id="uploadContainer" style="display:none;position:relative;">
         <canvas id="uploadCanvas"></canvas>
         <canvas id="uploadOverlay"></canvas>
       </div>
@@ -178,6 +179,7 @@ let isModelReady = false;
 let webcamStream = null;
 let detectionLoop = null;
 let lastDetectionCount = 0;
+let isProcessing = false; // Prevent overlapping processing
 
 // ==================== DOM ELEMENTS ====================
 const webcamVideo = document.getElementById('webcamVideo');
@@ -291,6 +293,9 @@ async function loadONNXModel() {
 }
 
 // ==================== IMAGE PREPROCESSING ====================
+// Pre-allocate tensor array for reuse (avoid GC)
+const tensorBuffer = new Float32Array(3 * INPUT_SIZE * INPUT_SIZE);
+
 function loadImage(src) {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -300,35 +305,48 @@ function loadImage(src) {
   });
 }
 
-async function preprocessImage(img) {
+// Optimized: accepts Image or Canvas directly
+async function preprocessImage(source) {
   const canvas = document.createElement('canvas');
   canvas.width = INPUT_SIZE;
   canvas.height = INPUT_SIZE;
-  const ctx = canvas.getContext('2d');
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
 
-  const scale = Math.min(INPUT_SIZE / img.width, INPUT_SIZE / img.height);
-  const newWidth = img.width * scale;
-  const newHeight = img.height * scale;
+  let srcWidth, srcHeight;
+
+  if (source instanceof HTMLCanvasElement) {
+    srcWidth = source.width;
+    srcHeight = source.height;
+  } else {
+    srcWidth = source.width;
+    srcHeight = source.height;
+  }
+
+  const scale = Math.min(INPUT_SIZE / srcWidth, INPUT_SIZE / srcHeight);
+  const newWidth = srcWidth * scale;
+  const newHeight = srcHeight * scale;
   const offsetX = (INPUT_SIZE - newWidth) / 2;
   const offsetY = (INPUT_SIZE - newHeight) / 2;
 
   ctx.fillStyle = '#808080';
   ctx.fillRect(0, 0, INPUT_SIZE, INPUT_SIZE);
-  ctx.drawImage(img, offsetX, offsetY, newWidth, newHeight);
+  ctx.drawImage(source, offsetX, offsetY, newWidth, newHeight);
 
   const imageData = ctx.getImageData(0, 0, INPUT_SIZE, INPUT_SIZE);
   const data = imageData.data;
-  const input = new Float32Array(3 * INPUT_SIZE * INPUT_SIZE);
+  const pixelCount = INPUT_SIZE * INPUT_SIZE;
 
-  for (let i = 0; i < INPUT_SIZE * INPUT_SIZE; i++) {
-    input[i] = data[i * 4] / 255;
-    input[INPUT_SIZE * INPUT_SIZE + i] = data[i * 4 + 1] / 255;
-    input[2 * INPUT_SIZE * INPUT_SIZE + i] = data[i * 4 + 2] / 255;
+  // Optimized loop
+  for (let i = 0; i < pixelCount; i++) {
+    const idx = i * 4;
+    tensorBuffer[i] = data[idx] / 255;
+    tensorBuffer[pixelCount + i] = data[idx + 1] / 255;
+    tensorBuffer[2 * pixelCount + i] = data[idx + 2] / 255;
   }
 
   return {
-    tensor: new ort.Tensor('float32', input, [1, 3, INPUT_SIZE, INPUT_SIZE]),
-    scale: { scale, offsetX, offsetY, origWidth: img.width, origHeight: img.height }
+    tensor: new ort.Tensor('float32', tensorBuffer, [1, 3, INPUT_SIZE, INPUT_SIZE]),
+    scale: { scale, offsetX, offsetY, origWidth: srcWidth, origHeight: srcHeight }
   };
 }
 
@@ -436,25 +454,36 @@ function calculateIOU(box1, box2) {
 }
 
 // ==================== DRAW DETECTIONS ====================
-function drawDetections(canvas, detections, scale) {
+function drawDetections(canvas, detections, nativeWidth, nativeHeight, displayWidth, displayHeight) {
   const ctx = canvas.getContext('2d');
-  canvas.width = scale.origWidth;
-  canvas.height = scale.origHeight;
+
+  // Set canvas to display size (not native size)
+  canvas.width = displayWidth;
+  canvas.height = displayHeight;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+  // Calculate scale factor between native and display
+  const scaleX = displayWidth / nativeWidth;
+  const scaleY = displayHeight / nativeHeight;
+
   detections.forEach((det, i) => {
-    const [x1, y1, x2, y2] = det.bbox;
-    ctx.strokeStyle = '#00ba7c';
-    ctx.lineWidth = 3;
+    // Scale coordinates from native to display size
+    const x1 = det.bbox[0] * scaleX;
+    const y1 = det.bbox[1] * scaleY;
+    const x2 = det.bbox[2] * scaleX;
+    const y2 = det.bbox[3] * scaleY;
+
+    ctx.strokeStyle = '#FF0000';
+    ctx.lineWidth = 2;
     ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
 
     const label = (i + 1) + '. ' + det.label + ' ' + (det.confidence * 100).toFixed(1) + '%';
-    ctx.fillStyle = '#00ba7c';
-    ctx.font = 'bold 14px sans-serif';
+    ctx.fillStyle = '#FF0000';
+    ctx.font = 'bold 12px sans-serif';
     const textWidth = ctx.measureText(label).width;
-    ctx.fillRect(x1, y1 - 20, textWidth + 10, 20);
-    ctx.fillStyle = '#000';
-    ctx.fillText(label, x1 + 5, y1 - 5);
+    ctx.fillRect(x1, y1 - 18, textWidth + 8, 18);
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillText(label, x1 + 4, y1 - 4);
   });
 }
 
@@ -514,6 +543,7 @@ stopCam.onclick = () => {
   if (detectionLoop) cancelAnimationFrame(detectionLoop);
   if (webcamStream) webcamStream.getTracks().forEach(track => track.stop());
   webcamStream = null;
+  isProcessing = false;
   webcamVideo.srcObject = null;
   cameraContainer.style.display = 'none';
   uploadArea.style.display = 'flex';
@@ -524,24 +554,33 @@ stopCam.onclick = () => {
 };
 
 async function detectLoop() {
-  if (!webcamStream) return;
+  if (!webcamStream || isProcessing) {
+    detectionLoop = requestAnimationFrame(detectLoop);
+    return;
+  }
+
+  isProcessing = true;
 
   try {
+    // Create temp canvas for capture
     const tempCanvas = document.createElement('canvas');
     tempCanvas.width = webcamVideo.videoWidth;
     tempCanvas.height = webcamVideo.videoHeight;
-    const ctx = tempCanvas.getContext('2d');
+    const ctx = tempCanvas.getContext('2d', { willReadFrequently: true });
     ctx.drawImage(webcamVideo, 0, 0);
 
-    const img = await loadImage(tempCanvas.toDataURL());
-    const { tensor, scale } = await preprocessImage(img);
+    // Direct canvas preprocessing - no Image conversion needed!
+    const { tensor, scale } = await preprocessImage(tempCanvas);
     const output = await runInference(tensor);
 
     if (output) {
-      const detections = postprocessYOLO(output, scale, img.width, img.height);
+      const detections = postprocessYOLO(output, scale, tempCanvas.width, tempCanvas.height);
       lastDetectionCount = detections.length;
       count.textContent = detections.length;
-      drawDetections(overlayCanvas, detections, scale);
+
+      // Get actual displayed dimensions
+      const rect = webcamVideo.getBoundingClientRect();
+      drawDetections(overlayCanvas, detections, tempCanvas.width, tempCanvas.height, rect.width, rect.height);
 
       if (detections.length > 0) {
         renderDetections(detections);
@@ -553,6 +592,8 @@ async function detectLoop() {
     }
   } catch (e) {
     console.error('Detection error:', e);
+  } finally {
+    isProcessing = false;
   }
 
   detectionLoop = requestAnimationFrame(detectLoop);
@@ -607,7 +648,10 @@ async function processFile(file) {
       const detections = postprocessYOLO(output, scale, img.width, img.height);
       lastDetectionCount = detections.length;
       count.textContent = detections.length;
-      drawDetections(uploadOverlay, detections, scale);
+
+      // Get actual displayed dimensions
+      const rect = uploadCanvas.getBoundingClientRect();
+      drawDetections(uploadOverlay, detections, img.width, img.height, rect.width, rect.height);
 
       if (detections.length > 0) {
         renderDetections(detections);
