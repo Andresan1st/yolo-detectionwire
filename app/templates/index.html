@@ -605,16 +605,9 @@ function setOverlaySize() {
   if (!overlay || !video) return;
 
   // Use actual displayed size
-  const displayWidth = video.clientWidth || video.offsetWidth;
-  const displayHeight = video.clientHeight || video.offsetHeight;
-
-  overlay.width = displayWidth;
-  overlay.height = displayHeight;
+  overlay.width = video.clientWidth || video.offsetWidth;
+  overlay.height = video.clientHeight || video.offsetHeight;
 }
-
-// Store original video dimensions
-let originalVideoWidth = 0;
-let originalVideoHeight = 0;
 
 function drawOverlay(detections) {
   if (!video || !overlay || !detections || detections.length === 0) return;
@@ -626,26 +619,16 @@ function drawOverlay(detections) {
 
   ctx.clearRect(0, 0, overlay.width, overlay.height);
 
-  // Get display dimensions
+  // Coordinates are already in native video resolution
+  // Scale to match displayed size
+  const nativeWidth = video.videoWidth || overlay.width;
+  const nativeHeight = video.videoHeight || overlay.height;
   const displayWidth = video.clientWidth || overlay.width;
   const displayHeight = video.clientHeight || overlay.height;
-
-  // Get original video capture dimensions (before server resize)
-  const nativeWidth = originalVideoWidth || displayWidth;
-  const nativeHeight = originalVideoHeight || displayHeight;
-
-  // Server processes at MAX_FRAME_WIDTH (416px), maintaining aspect ratio
-  // Scale factor: display size / server processed size
-  // We need to know what width the server used
-  const SERVER_MAX_WIDTH = 416;
-  const serverProcessedWidth = SERVER_MAX_WIDTH;
-  const serverProcessedHeight = Math.round((SERVER_MAX_WIDTH / nativeWidth) * nativeHeight) || displayHeight;
-
-  const scaleX = displayWidth / serverProcessedWidth;
-  const scaleY = displayHeight / serverProcessedHeight;
+  const scaleX = displayWidth / nativeWidth;
+  const scaleY = displayHeight / nativeHeight;
 
   detections.forEach((d) => {
-    // Scale bounding box to match displayed video size
     const x1 = d.bbox.x1 * scaleX;
     const y1 = d.bbox.y1 * scaleY;
     const w = (d.bbox.x2 - d.bbox.x1) * scaleX;
@@ -758,22 +741,11 @@ function sendFrame() {
   if (!ws || ws.readyState !== WebSocket.OPEN || busy) return;
   if (video.readyState < 2) return;
 
-  // Resize for faster processing
-  const maxWidth = 416;
-  let width = video.videoWidth;
-  let height = video.videoHeight;
-
-  if (width > maxWidth) {
-    const scale = maxWidth / width;
-    width = maxWidth;
-    height = Math.round(height * scale);
-  }
-
   const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
   const ctx = canvas.getContext('2d');
-  ctx.drawImage(video, 0, 0, width, height);
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
   canvas.toBlob((blob) => {
     if (!blob) return;
@@ -784,7 +756,7 @@ function sendFrame() {
       busy = false;
       setMessage('❌ Gagal mengirim frame: ' + error.message, 'error');
     }
-  }, 'image/jpeg', 0.5); // Lower quality = FASTER transmission!
+  }, 'image/jpeg', 0.7);
 }
 
 // Upload handlers and fallback detection
@@ -873,9 +845,6 @@ startCam.onclick = async () => {
     if (liveIndicator) liveIndicator.style.display = 'inline';
 
     video.onloadedmetadata = () => {
-      // Store original video dimensions for proper scaling
-      originalVideoWidth = video.videoWidth;
-      originalVideoHeight = video.videoHeight;
       setOverlaySize();
       video.play();
     };
@@ -894,8 +863,6 @@ stopCam.onclick = () => {
   if (stream) stream.getTracks().forEach(t => t.stop());
   stream = null;
   isCameraActive = false;
-  originalVideoWidth = 0;
-  originalVideoHeight = 0;
   if (cameraContainer) cameraContainer.style.display = 'none';
   if (overlay) overlay.style.display = 'none';
   if (video) video.style.display = 'none';

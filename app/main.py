@@ -104,15 +104,9 @@ def detect_fast(frame: np.ndarray) -> list[dict]:
     """
     FAST detection - NO annotation, returns only detections.
     Optimized for real-time WebSocket streaming.
+    Keeps original resolution for accurate bounding boxes.
     """
-    height, width = frame.shape[:2]
-
-    # Resize jika terlalu besar
-    if width > MAX_FRAME_WIDTH:
-        scale = MAX_FRAME_WIDTH / width
-        frame = cv2.resize(frame, (MAX_FRAME_WIDTH, int(height * scale)))
-
-    # Deteksi dengan YOLO
+    # Deteksi dengan YOLO (no resize for WebSocket)
     model = get_model()
     result = model.predict(frame, conf=CONFIDENCE, iou=IOU, device=DEVICE, verbose=False)[0]
 
@@ -397,7 +391,7 @@ async def detect_raw(image_data: bytes = Body(...)):
 
 @app.websocket("/ws/detect")
 async def websocket_detect(websocket: WebSocket):
-    """Real-time webcam detection over WebSocket - FAST MODE (no annotation)."""
+    """Real-time webcam detection over WebSocket - FAST MODE."""
     await websocket.accept()
     try:
         while True:
@@ -410,13 +404,12 @@ async def websocket_detect(websocket: WebSocket):
                 })
                 continue
 
-            # FAST detection - no annotation
+            # FAST detection - no resize, no annotation
             detections = detect_fast(frame)
             await websocket.send_json({
                 "success": True,
                 "count": len(detections),
-                "detections": detections,
-                "annotated_image": None  # No annotation = FASTER!
+                "detections": detections
             })
     except WebSocketDisconnect:
         return
