@@ -573,14 +573,19 @@ async function setupWebRTC() {
       })
     });
 
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'WebRTC offer failed');
+    }
+
     const answer = await response.json();
     sessionId = answer.session_id;
 
-    // Set remote description (answer from server)
-    await peerConnection.setRemoteDescription({
+    // Set remote description with proper RTCSessionDescription object
+    await peerConnection.setRemoteDescription(new RTCSessionDescription({
       type: answer.type,
       sdp: answer.sdp
-    });
+    }));
 
     setStatus(true);
     setMessage('🔌 WebRTC terhubung. Streaming video...', 'info');
