@@ -29,12 +29,14 @@ from ultralytics import YOLO
 
 # WebRTC support
 try:
-    from aiortc import RTCPeerConnection, VideoStreamTrack, MediaBlackhole
+    from aiortc import RTCPeerConnection, VideoStreamTrack
     from aiortc.contrib.media import MediaRelay
     WEBRTC_AVAILABLE = True
-except ImportError:
+    print("✅ WebRTC (aiortc) loaded successfully")
+except Exception as e:
     WEBRTC_AVAILABLE = False
-    VideoStreamTrack = None
+    VideoStreamTrack = object
+    print(f"⚠️ WebRTC not available: {e}")
 
 # Try to import database drivers
 PYODBC_AVAILABLE = False
