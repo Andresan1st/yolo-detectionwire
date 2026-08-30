@@ -35,7 +35,7 @@ STATIC_DIR = BASE_DIR / "static"
 TEMPLATES_DIR = BASE_DIR / "templates"
 MODEL_PATH = BASE_DIR / "best.onnx"
 
-INPUT_SIZE = 640  # Sesuaikan dengan model
+INPUT_SIZE = 1280  # Sesuaikan dengan model
 CONFIDENCE_THRESHOLD = 0.35
 IOU_THRESHOLD = 0.45
 CLASS_NAMES = ['element_copper']
