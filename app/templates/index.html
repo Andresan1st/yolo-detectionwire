@@ -484,13 +484,6 @@ window.addEventListener('DOMContentLoaded', () => {
   const API_URL = window.location.origin;
   const WS_URL = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws/detect`;
 
-  // WebRTC state
-  let peerConnection = null;
-  let localStream = null;
-  let remoteStream = null;
-  let dataChannel = null;
-  let sessionId = null;
-
   // Loading functions
   function showLoading(text = 'Memproses gambar...') {
     loadingText.textContent = text;
@@ -520,146 +513,6 @@ window.addEventListener('DOMContentLoaded', () => {
     }
   };
 
-// WebRTC functions
-async function setupWebRTC() {
-  try {
-    // Get ICE servers
-    const iceResponse = await fetch(`${API_URL}/api/webrtc/ice-servers`);
-    const { iceServers } = await iceResponse.json();
-
-    // Create peer connection
-    peerConnection = new RTCPeerConnection({ iceServers });
-
-    // Get local stream
-    localStream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode: 'environment',
-        width: { ideal: 1280 },
-        height: { ideal: 720 }
-      },
-      audio: false
-    });
-
-    // Add local tracks to peer connection
-    localStream.getTracks().forEach(track => {
-      peerConnection.addTrack(track, localStream);
-    });
-
-    // Create data channel for detection results
-    dataChannel = peerConnection.createDataChannel('detection');
-    setupDataChannel(dataChannel);
-
-    // Handle incoming remote stream
-    peerConnection.ontrack = (event) => {
-      remoteStream = event.streams[0];
-      if (video && remoteStream) {
-        video.srcObject = remoteStream;
-        video.style.display = 'block';
-      }
-    };
-
-    // Create offer
-    const offer = await peerConnection.createOffer();
-    await peerConnection.setLocalDescription(offer);
-
-    // Send offer to server and get answer
-    const response = await fetch(`${API_URL}/api/webrtc/offer`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        sdp: offer.sdp,
-        type: offer.type,
-        session_id: sessionId
-      })
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.detail || 'WebRTC offer failed');
-    }
-
-    const answer = await response.json();
-    sessionId = answer.session_id;
-
-    // Set remote description with proper RTCSessionDescription object
-    await peerConnection.setRemoteDescription(new RTCSessionDescription({
-      type: answer.type,
-      sdp: answer.sdp
-    }));
-
-    setStatus(true);
-    setMessage('🔌 WebRTC terhubung. Streaming video...', 'info');
-
-  } catch (error) {
-    console.error('WebRTC error:', error);
-    setStatus(false);
-    setMessage('❌ WebRTC error: ' + error.message, 'error');
-    throw error;
-  }
-}
-
-function setupDataChannel(channel) {
-  channel.onopen = () => {
-    console.log('Data channel opened');
-  };
-
-  channel.onmessage = (event) => {
-    try {
-      const data = JSON.parse(event.data);
-      if (data.type === 'detection') {
-        handleDetectionResult({
-          success: true,
-          count: data.count,
-          detections: data.detections || []
-        });
-      }
-    } catch (error) {
-      console.error('Data channel message error:', error);
-    }
-  };
-
-  channel.onclose = () => {
-    console.log('Data channel closed');
-  };
-}
-
-async function stopWebRTC() {
-  if (dataChannel) {
-    dataChannel.close();
-    dataChannel = null;
-  }
-
-  if (peerConnection) {
-    peerConnection.close();
-    peerConnection = null;
-  }
-
-  if (localStream) {
-    localStream.getTracks().forEach(track => track.stop());
-    localStream = null;
-  }
-
-  if (sessionId) {
-    try {
-      await fetch(`${API_URL}/api/webrtc/close/${sessionId}`, { method: 'POST' });
-    } catch (e) {
-      console.error('Error closing session:', e);
-    }
-    sessionId = null;
-  }
-
-  if (video) {
-    video.srcObject = null;
-  }
-}
-
-// Fallback to WebSocket
-let stream, timer, busy = false, ws;
-let lastDetectionCount = 0;
-let isCameraActive = false;
-let lastDetections = [];
-let boxTimeout = null;
-
 // Get area from URL path (e.g., /labqc, /produksi)
 const pathParts = window.location.pathname.split('/').filter(Boolean);
 const AREA = pathParts.length > 0 ? pathParts[0] : 'default';
@@ -667,6 +520,12 @@ const AREA = pathParts.length > 0 ? pathParts[0] : 'default';
 // Set area badge
 const areaBadge = document.getElementById('areaBadge');
 if (areaBadge) areaBadge.textContent = '📍 Area: ' + AREA;
+
+let stream, timer, busy = false, ws;
+let lastDetectionCount = 0;
+let isCameraActive = false;
+let lastDetections = []; // Store last detections
+let boxTimeout = null; // Timer to clear box after 10 seconds
 
 // Update overlay size on resize
 window.addEventListener('resize', () => {
@@ -757,21 +616,21 @@ function drawOverlay(detections) {
     const w = d.bbox.x2 - d.bbox.x1;
     const h = d.bbox.y2 - d.bbox.y1;
 
-    // Draw box
-    ctx.strokeStyle = '#00e676';
-    ctx.lineWidth = 3;
+    // Draw box - match backend (thickness 2)
+    ctx.strokeStyle = '#28dc78'; // RGB from BGR(40, 220, 120)
+    ctx.lineWidth = 2;
     ctx.strokeRect(x1, y1, w, h);
 
-    // Draw label background
+    // Draw label background - match backend font scale
     const label = `${d.label} ${Math.round(d.confidence * 100)}%`;
-    ctx.font = 'bold 16px Arial';
+    ctx.font = '600 14px "Segoe UI", Arial, sans-serif'; // Match backend FONT_HERSHEY_SIMPLEX
     const textWidth = ctx.measureText(label).width;
-    ctx.fillStyle = '#00e676';
-    ctx.fillRect(x1, Math.max(0, y1 - 24), textWidth + 10, 22);
+    ctx.fillStyle = '#28dc78';
+    ctx.fillRect(x1, Math.max(0, y1 - 18), textWidth + 8, 16);
 
     // Draw label text
-    ctx.fillStyle = '#000';
-    ctx.fillText(label, x1 + 5, Math.max(16, y1 - 8));
+    ctx.fillStyle = '#000000';
+    ctx.fillText(label, x1 + 4, Math.max(12, y1 - 6));
   });
 }
 
@@ -952,12 +811,12 @@ startCam.onclick = async () => {
     count.textContent = '0';
     isCameraActive = true;
 
-    // Stop WebSocket if running
-    stopWebSocket();
-
-    // Setup WebRTC
-    await setupWebRTC();
-
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment' },
+      audio: false
+    });
+    video.srcObject = stream;
+    if (video) video.style.display = 'block';
     if (cameraContainer) cameraContainer.style.display = 'block';
     if (overlay) overlay.style.display = 'block';
     if (uploadArea) uploadArea.style.display = 'none';
@@ -972,81 +831,19 @@ startCam.onclick = async () => {
       video.play();
     };
 
-    setMessage('📹 Kamera aktif dengan WebRTC. Mendeteksi...', 'info');
+    // Start detection immediately
+    createWebSocket();
+    timer = setInterval(sendFrame, 1000); // 1 second interval
+    setMessage('📹 Kamera aktif. Mendeteksi setiap 1 detik...', 'info');
   } catch (error) {
     setMessage('❌ Kamera error: ' + error.message, 'error');
   }
 };
 
-// WebSocket fallback
-function createWebSocket() {
-  if (ws && ws.readyState === WebSocket.OPEN) return;
-  ws = new WebSocket(WS_URL);
-  ws.binaryType = 'arraybuffer';
-
-  ws.onopen = () => {
-    setStatus(true);
-    setMessage('🔌 Koneksi WebSocket siap. Deteksi webcam dimulai.', 'info');
-  };
-
-  ws.onmessage = (event) => {
-    try {
-      const data = JSON.parse(event.data);
-      handleDetectionResult(data);
-    } catch (error) {
-      setMessage('❌ WebSocket response error: ' + error.message, 'error');
-    }
-  };
-
-  ws.onclose = () => {
-    setStatus(false);
-  };
-
-  ws.onerror = () => {
-    setStatus(false);
-  };
-}
-
-function sendFrame() {
-  if (!ws || ws.readyState !== WebSocket.OPEN || busy) return;
-  if (video.readyState < 2) return;
-
-  const canvas = document.createElement('canvas');
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
-  const ctx = canvas.getContext('2d');
-  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-  canvas.toBlob((blob) => {
-    if (!blob) return;
-    try {
-      busy = true;
-      ws.send(blob);
-    } catch (error) {
-      busy = false;
-      setMessage('❌ Gagal mengirim frame: ' + error.message, 'error');
-    }
-  }, 'image/jpeg', 0.85);
-}
-
-function stopWebSocket() {
-  if (ws) {
-    ws.close();
-    ws = null;
-  }
-  if (timer) {
-    clearInterval(timer);
-    timer = null;
-  }
-}
-
 stopCam.onclick = () => {
-  // Stop WebRTC
-  stopWebRTC();
-
-  // Also stop WebSocket
-  stopWebSocket();
-
+  clearInterval(timer);
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  stream = null;
   isCameraActive = false;
   if (cameraContainer) cameraContainer.style.display = 'none';
   if (overlay) overlay.style.display = 'none';
