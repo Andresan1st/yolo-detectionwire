@@ -129,6 +129,20 @@
             background: #1976D2;
         }
 
+        .btn-save {
+            background: #9C27B0;
+            color: #fff;
+        }
+
+        .btn-save:hover {
+            background: #7B1FA2;
+        }
+
+        .btn-save:disabled {
+            background: #666;
+            cursor: not-allowed;
+        }
+
         .sidebar {
             display: flex;
             flex-direction: column;
@@ -302,6 +316,14 @@
                     <button class="btn btn-start" id="startBtn">▶ Start Detection</button>
                     <button class="btn btn-stop" id="stopBtn" disabled>⏹ Stop Detection</button>
                     <button class="btn btn-screenshot" id="captureBtn">📸 Capture</button>
+                    <button class="btn btn-save" id="saveBtn">💾 Save to DB</button>
+                </div>
+
+                <div class="controls">
+                    <div id="lastResult" style="padding: 10px; background: rgba(0,0,0,0.3); border-radius: 8px; display: none;">
+                        Last Detection: <span id="lastDetection">-</span>
+                        <span id="saveStatus" style="color: #4CAF50; margin-left: 10px;"></span>
+                    </div>
                 </div>
 
                 <div class="screenshot-preview" id="screenshotPreview">
@@ -364,6 +386,7 @@
         let frameCount = 0;
         let lastFrameTime = Date.now();
         let fps = 0;
+        let lastDetection = null;
 
         // DOM Elements
         const video = document.getElementById('videoElement');
@@ -372,6 +395,7 @@
         const startBtn = document.getElementById('startBtn');
         const stopBtn = document.getElementById('stopBtn');
         const captureBtn = document.getElementById('captureBtn');
+        const saveBtn = document.getElementById('saveBtn');
         const cameraSelect = document.getElementById('cameraSelect');
         const statusIndicator = document.getElementById('statusIndicator');
         const errorMessage = document.getElementById('errorMessage');
@@ -384,6 +408,9 @@
         const totalFramesEl = document.getElementById('totalFrames');
         const detectionListEl = document.getElementById('detectionList');
         const intervalInput = document.getElementById('intervalInput');
+        const lastResultEl = document.getElementById('lastResult');
+        const lastDetectionEl = document.getElementById('lastDetection');
+        const saveStatusEl = document.getElementById('saveStatus');
 
         // Populate camera list
         async function populateCameras() {
@@ -506,6 +533,13 @@
                 detectionCountEl.textContent = result.detections;
                 avgConfidenceEl.textContent = (result.confidence_avg * 100).toFixed(1) + '%';
 
+                // Store last detection for saving
+                lastDetection = result;
+                lastResultEl.style.display = 'block';
+                lastDetectionEl.textContent = `${result.detections} found, ${(result.confidence_avg * 100).toFixed(1)}% conf`;
+                saveStatusEl.textContent = '';
+                saveBtn.disabled = false;
+
                 // Add to detection list
                 addDetectionToList(result);
 
@@ -564,6 +598,47 @@
             detectFrame();
         }
 
+        // Save detection to database
+        async function saveDetection() {
+            if (!lastDetection) {
+                alert('No detection to save!');
+                return;
+            }
+
+            try {
+                saveBtn.disabled = true;
+                saveBtn.textContent = '⏳ Saving...';
+
+                const response = await fetch('/api/save/detection', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        detection_count: lastDetection.detections,
+                        confidence_avg: lastDetection.confidence_avg,
+                        status: lastDetection.status,
+                        camera_source: 'webcam'
+                    })
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    saveStatusEl.textContent = `✓ Saved (ID: ${result.saved_id})`;
+                    saveBtn.textContent = '✓ Saved';
+                } else {
+                    alert('Failed to save: ' + result.detail);
+                    saveBtn.textContent = '💾 Save to DB';
+                    saveBtn.disabled = false;
+                }
+
+            } catch (error) {
+                console.error('Save error:', error);
+                alert('Save error: ' + error.message);
+                saveBtn.textContent = '💾 Save to DB';
+                saveBtn.disabled = false;
+            }
+        }
+
         // Event Listeners
         cameraSelect.addEventListener('change', (e) => {
             if (e.target.value) {
@@ -575,6 +650,8 @@
         startBtn.addEventListener('click', startDetection);
         stopBtn.addEventListener('click', stopDetection);
         captureBtn.addEventListener('click', captureScreenshot);
+        saveBtn.addEventListener('click', saveDetection);
+        saveBtn.disabled = true;
 
         intervalInput.addEventListener('change', () => {
             if (isDetecting) {

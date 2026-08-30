@@ -62,14 +62,14 @@ def save_detection(detection_data: dict) -> int:
     cursor.execute("""
         INSERT INTO machine_detection_copper
         (detection_count, confidence_avg, image_path, element_type, status, camera_source)
-        VALUES (%d, %f, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s)
     """, (
-        detection_data.get('detection_count', 0),
-        detection_data.get('confidence_avg', 0.0),
-        detection_data.get('image_path'),
-        detection_data.get('element_type', 'copper'),
-        detection_data.get('status', 'detected'),
-        detection_data.get('camera_source')
+        str(detection_data.get('detection_count', 0)),
+        str(detection_data.get('confidence_avg', 0.0)),
+        str(detection_data.get('image_path', '')),
+        str(detection_data.get('element_type', 'copper')),
+        str(detection_data.get('status', 'detected')),
+        str(detection_data.get('camera_source', ''))
     ))
 
     conn.commit()

@@ -114,6 +114,36 @@ async def history_page():
 
 # ==================== API ENDPOINTS ====================
 
+# Pydantic model for save request
+class SaveDetectionRequest(BaseModel):
+    detection_count: int
+    confidence_avg: float
+    status: str
+    camera_source: str = "webcam"
+
+@app.post("/api/save/detection")
+async def save_detection_record(data: SaveDetectionRequest):
+    """Save detection to database (manual save)
+
+    Args:
+        data: Detection data to save
+
+    Returns:
+        Saved record ID
+    """
+    try:
+        saved_id = save_detection({
+            'detection_count': data.detection_count,
+            'confidence_avg': data.confidence_avg,
+            'element_type': 'copper',
+            'status': data.status,
+            'camera_source': data.camera_source,
+        })
+        return {"saved_id": saved_id, "status": "success"}
+    except Exception as e:
+        print(f"Save error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/api/detect/frame")
 async def detect_frame(data: FrameDetectionRequest):
     """Detect copper in a single frame from WebRTC
@@ -141,21 +171,12 @@ async def detect_frame(data: FrameDetectionRequest):
         detection_count = len(detections)
         confidence_avg = np.mean([d.confidence for d in detections]) if detections else 0.0
 
-        # Save to database
-        saved_id = save_detection({
-            'detection_count': detection_count,
-            'confidence_avg': float(confidence_avg),
-            'element_type': 'copper',
-            'status': 'detected' if detection_count > 0 else 'not_found',
-            'camera_source': data.camera_source,
-        })
-
         return DetectionResponse(
             detections=detection_count,
             confidence_avg=float(confidence_avg),
             element='copper',
             status='detected' if detection_count > 0 else 'not_found',
-            saved_id=saved_id
+            saved_id=None
         )
 
     except Exception as e:
