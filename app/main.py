@@ -46,7 +46,7 @@ def load_session():
     print(f"Loading: {MODEL_PATH} ({MODEL_PATH.stat().st_size / 1024 / 1024:.1f} MB)")
     session = ort.InferenceSession(
         str(MODEL_PATH),
-        providers=['CPUExecutionProvider']
+        providers=['CUDAExecutionProvider', 'CPUExecutionProvider']
     )
     print(f"Providers: {session.get_providers()}")
     print("Model loaded!")
@@ -100,19 +100,41 @@ def detect(image_bytes):
     input_name = session.get_inputs()[0].name
     output = session.run(None, {input_name: tensor})[0]
 
+    print(f"DEBUG: output shape = {output.shape}")
+
     detections = []
 
-    # Parse output (YOLOv8 format: [batch, 5+classes, num_predictions])
-    for det in output[0].T:  # Transpose: each row = [x,y,w,h,conf,class_scores...]
-        x, y, w, h = det[:4]
-        conf = float(det[4])
+    # Detect format: [batch, num_predictions, 4+num_classes]
+    # or [batch, 4+num_classes, num_predictions]
+    output = output.squeeze()  # Remove batch dimension
+
+    if len(output.shape) == 2:
+        # Format: [num_predictions, 4+num_classes]
+        predictions = output
+    else:
+        # Format: [4+num_classes, num_predictions] -> transpose
+        predictions = output.T
+
+    num_values = predictions.shape[1]  # 4 + num_classes
+    num_classes = num_values - 4
+
+    print(f"DEBUG: predictions shape = {predictions.shape}, num_classes = {num_classes}")
+
+    for pred in predictions:
+        x, y, w, h = pred[:4]
+        conf = float(pred[4])
 
         if conf < CONFIDENCE:
             continue
 
-        # Class
-        class_scores = det[5:]
-        class_id = int(np.argmax(class_scores))
+        # Class (for single class model, it's just the confidence)
+        if num_classes == 1:
+            class_id = 0
+        else:
+            class_scores = pred[5:5+num_classes]
+            if len(class_scores) == 0:
+                continue
+            class_id = int(np.argmax(class_scores))
 
         # Convert center -> corner
         x1 = x - w / 2
