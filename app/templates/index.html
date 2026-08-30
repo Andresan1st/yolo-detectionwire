@@ -4,11 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Wire Branch Counter</title>
-  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.17.0/dist/ort.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
-      color-scheme: dark;
       --bg-primary: #0f1419;
       --bg-card: #1a1f26;
       --bg-input: #242b33;
@@ -31,7 +29,7 @@
     .card { border: 1px solid var(--border); border-radius: 16px; background: var(--bg-card); overflow: hidden; }
     .card-header { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
     .card-header h2 { font-size: 16px; font-weight: 600; }
-    .card-body { position: relative; width: 100%; min-height: 400px; background: var(--bg-input); display: flex; align-items: center; justify-content: center; }
+    .card-body { position: relative; width: 100%; min-height: 400px; background: var(--bg-input); }
     .card-footer { padding: 16px 20px; }
     .media-container { position: relative; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
     #webcamVideo, #uploadCanvas { max-width: 100%; max-height: 100%; display: block; }
@@ -48,7 +46,6 @@
     button.secondary:hover { background: var(--border); }
     button:disabled { opacity: 0.5; cursor: not-allowed; }
     .btn-group { display: flex; gap: 10px; flex-wrap: wrap; }
-    .stats { display: flex; align-items: center; gap: 12px; padding: 20px; background: var(--bg-input); border-radius: 12px; margin-bottom: 16px; }
     .number { font-size: 48px; font-weight: 800; color: var(--accent-green); line-height: 1; }
     .number-label { color: var(--text-secondary); font-size: 14px; }
     .message { padding: 12px 16px; border-radius: 8px; font-size: 14px; margin-bottom: 16px; }
@@ -75,16 +72,7 @@
     .popup-title { font-size: 24px; font-weight: 700; margin-bottom: 8px; }
     .popup-message { color: var(--text-secondary); font-size: 14px; margin-bottom: 24px; line-height: 1.5; white-space: pre-line; }
     .popup-btn { padding: 12px 32px; border-radius: 8px; border: none; font-size: 14px; font-weight: 600; cursor: pointer; background: var(--accent-green); color: #000; }
-    .model-loading { color: #ff7a00; }
-    .model-ready { color: var(--accent-green); }
-    .model-error { color: var(--accent-red); }
-    @media(max-width: 700px) {
-      main { padding: 12px; }
-      h1 { font-size: 22px; }
-      .card-body { min-height: 280px; }
-      .number { font-size: 36px; }
-      header { flex-direction: column; align-items: flex-start; }
-    }
+    @media(max-width: 700px) { main { padding: 12px; } h1 { font-size: 22px; } .card-body { min-height: 280px; } .number { font-size: 36px; } header { flex-direction: column; align-items: flex-start; } }
   </style>
 </head>
 <body>
@@ -97,13 +85,12 @@
     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
       <span class="badge" id="areaBadge">📍 Area: default</span>
       <span class="badge" id="status">Connecting...</span>
-      <span class="badge" id="modelStatus">🤖 Model: Loading...</span>
     </div>
   </header>
 
   <div class="card">
     <div class="card-header">
-      <h2>📷 Webcam Live</h2>
+      <h2>📷 Webcam / Upload</h2>
       <div style="display:flex;align-items:center;gap:16px">
         <div style="display:flex;align-items:center;gap:8px">
           <span class="number" id="count" style="font-size:28px">0</span>
@@ -130,9 +117,9 @@
     </div>
     <div class="card-footer">
       <div class="btn-group">
-        <button class="secondary" id="uploadBtn" disabled>📁 Pilih File</button>
+        <button class="secondary" id="uploadBtn">📁 Pilih File</button>
         <button class="secondary" id="stopCam" disabled>⏹ Berhenti</button>
-        <button class="primary" id="startCam" disabled>🎥 Aktifkan Kamera</button>
+        <button class="primary" id="startCam">🎥 Aktifkan Kamera</button>
         <button class="secondary" id="saveDbBtn" disabled style="background:var(--accent);color:#fff">💾 Simpan ke DB</button>
       </div>
       <div class="detections-panel" id="detectionsPanel">
@@ -142,7 +129,7 @@
     </div>
   </div>
 
-  <div class="message info" id="message">⏳ Memuat model AI...</div>
+  <div class="message info" id="message">✅ Server siap! Aktifkan kamera atau upload gambar.</div>
 </main>
 
 <div class="loading-overlay" id="loadingOverlay">
@@ -161,11 +148,6 @@
 
 <script>
 // ==================== CONFIG ====================
-const MODEL_URL = '/best.onnx';
-const INPUT_SIZE = 1280;
-const CONFIDENCE_THRESHOLD = 0.35;
-const IOU_THRESHOLD = 0.45;
-const CLASS_NAMES = ['element_copper'];
 const API_URL = window.location.origin;
 
 // Get area from URL
@@ -174,14 +156,12 @@ const AREA = pathParts.length > 0 ? pathParts[0] : 'default';
 document.getElementById('areaBadge').textContent = '📍 Area: ' + AREA;
 
 // ==================== STATE ====================
-let session = null;
-let isModelReady = false;
 let webcamStream = null;
 let detectionLoop = null;
 let lastDetectionCount = 0;
-let isProcessing = false; // Prevent overlapping processing
+let lastDetections = [];
 
-// ==================== DOM ELEMENTS ====================
+// ==================== DOM ====================
 const webcamVideo = document.getElementById('webcamVideo');
 const cameraContainer = document.getElementById('cameraContainer');
 const uploadArea = document.getElementById('uploadArea');
@@ -198,17 +178,15 @@ const count = document.getElementById('count');
 const message = document.getElementById('message');
 const detectionsPanel = document.getElementById('detectionsPanel');
 const detectionsList = document.getElementById('detectionsList');
-const statusBadge = document.getElementById('status');
 const loadingOverlay = document.getElementById('loadingOverlay');
 const loadingText = document.getElementById('loadingText');
-const modelStatus = document.getElementById('modelStatus');
 const popupOverlay = document.getElementById('popupOverlay');
 const popupIcon = document.getElementById('popupIcon');
 const popupTitle = document.getElementById('popupTitle');
 const popupMessage = document.getElementById('popupMessage');
 const popupBtn = document.getElementById('popupBtn');
 
-// ==================== UTILITIES ====================
+// ==================== UTILS ====================
 function setMessage(text, type = 'info') {
   message.textContent = text;
   message.className = 'message ' + type;
@@ -242,313 +220,30 @@ async function checkHealth() {
   try {
     const res = await fetch(API_URL + '/health');
     if (res.ok) {
-      statusBadge.textContent = '● Connected';
-      statusBadge.className = 'badge connected';
+      document.getElementById('status').textContent = '● Connected';
+      document.getElementById('status').className = 'badge connected';
+      setMessage('✅ Server siap! Aktifkan kamera atau upload gambar.', 'success');
       return;
     }
   } catch {}
-  statusBadge.textContent = '○ Disconnected';
-  statusBadge.className = 'badge disconnected';
+  document.getElementById('status').textContent = '○ Disconnected';
+  document.getElementById('status').className = 'badge disconnected';
+  setMessage('❌ Server tidak terhubung', 'error');
 }
 checkHealth();
 setInterval(checkHealth, 10000);
 
-// ==================== MODEL LOADING ====================
-// Cache for model bytes (in memory)
-let cachedModelBytes = null;
-
-// IndexedDB for persistent model caching
-const DB_NAME = 'WireCounterCache';
-const STORE_NAME = 'models';
-const MODEL_KEY = 'best_onnx';
-
-function openDB() {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, 1);
-    request.onerror = () => reject(request.error);
-    request.onsuccess = () => resolve(request.result);
-    request.onupgradeneeded = (e) => {
-      const db = e.target.result;
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        db.createObjectStore(STORE_NAME);
-      }
-    };
-  });
-}
-
-async function getCachedModel() {
-  try {
-    const db = await openDB();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE_NAME, 'readonly');
-      const store = tx.objectStore(STORE_NAME);
-      const request = store.get(MODEL_KEY);
-      request.onerror = () => reject(request.error);
-      request.onsuccess = () => resolve(request.result);
-    });
-  } catch {
-    return null;
-  }
-}
-
-async function saveModelToCache(bytes) {
-  try {
-    const db = await openDB();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE_NAME, 'readwrite');
-      const store = tx.objectStore(STORE_NAME);
-      const request = store.put(bytes, MODEL_KEY);
-      request.onerror = () => reject(request.error);
-      request.onsuccess = () => resolve();
-    });
-  } catch {
-    console.warn('Failed to save model to IndexedDB');
-  }
-}
-
-async function loadONNXModel() {
-  modelStatus.textContent = '🤖 Model: Loading...';
-  modelStatus.className = 'badge model-loading';
-  startCam.disabled = true;
-  uploadBtn.disabled = true;
-  setMessage('⏳ Memuat model AI...', 'info');
-
-  try {
-    ort.env.wasm.numThreads = navigator.hardwareConcurrency || 4;
-    ort.env.wasm.loggingLevel = 'error';
-
-    // Try to get cached model from IndexedDB first
-    const cachedModel = await getCachedModel();
-
-    if (cachedModel) {
-      console.log('Loading model from IndexedDB cache...');
-      showLoading('🔍 Memuat model dari cache...');
-      cachedModelBytes = cachedModel.buffer;
-    } else {
-      showLoading('🔍 Mengunduh model AI...');
-      console.log('Downloading ONNX model...');
-
-      const response = await fetch(MODEL_URL);
-
-      if (!response.ok) {
-        throw new Error('Gagal mengunduh model: ' + response.status);
-      }
-
-      // Read as ArrayBuffer
-      cachedModelBytes = await response.arrayBuffer();
-
-      console.log('Model downloaded: ' + (cachedModelBytes.byteLength / 1024 / 1024).toFixed(2) + ' MB');
-
-      // Save to IndexedDB for next time
-      await saveModelToCache(new Uint8Array(cachedModelBytes));
-      console.log('Model saved to cache');
-    }
-
-    showLoading('🔍 Menyiapkan model...');
-    modelStatus.textContent = '🤖 Model: Compiling...';
-
-    // Create session from cached bytes
-    session = await ort.InferenceSession.create(cachedModelBytes, {
-      executionProviders: ['wasm', 'cpu']
-    });
-
-    isModelReady = true;
-    modelStatus.textContent = '✅ Model Ready';
-    modelStatus.className = 'badge model-ready';
-
-    console.log('ONNX model loaded');
-    console.log('Input names:', session.inputNames);
-    console.log('Output names:', session.outputNames);
-
-    startCam.disabled = false;
-    uploadBtn.disabled = false;
-    hideLoading();
-    setMessage('✅ Model siap! Aktifkan kamera atau upload gambar.', 'success');
-  } catch (error) {
-    console.error('Model load error:', error);
-    modelStatus.textContent = '❌ Model Error';
-    modelStatus.className = 'badge model-error';
-    hideLoading();
-    setMessage('❌ Gagal memuat model: ' + error.message, 'error');
-  }
-}
-
-// ==================== IMAGE PREPROCESSING ====================
-// Pre-allocate tensor array for reuse (avoid GC)
-const tensorBuffer = new Float32Array(3 * INPUT_SIZE * INPUT_SIZE);
-
-function loadImage(src) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error('Gagal membaca gambar'));
-    img.src = src;
-  });
-}
-
-// Optimized: accepts Image or Canvas directly
-async function preprocessImage(source) {
-  const canvas = document.createElement('canvas');
-  canvas.width = INPUT_SIZE;
-  canvas.height = INPUT_SIZE;
-  const ctx = canvas.getContext('2d', { willReadFrequently: true });
-
-  let srcWidth, srcHeight;
-
-  if (source instanceof HTMLCanvasElement) {
-    srcWidth = source.width;
-    srcHeight = source.height;
-  } else {
-    srcWidth = source.width;
-    srcHeight = source.height;
-  }
-
-  const scale = Math.min(INPUT_SIZE / srcWidth, INPUT_SIZE / srcHeight);
-  const newWidth = srcWidth * scale;
-  const newHeight = srcHeight * scale;
-  const offsetX = (INPUT_SIZE - newWidth) / 2;
-  const offsetY = (INPUT_SIZE - newHeight) / 2;
-
-  ctx.fillStyle = '#808080';
-  ctx.fillRect(0, 0, INPUT_SIZE, INPUT_SIZE);
-  ctx.drawImage(source, offsetX, offsetY, newWidth, newHeight);
-
-  const imageData = ctx.getImageData(0, 0, INPUT_SIZE, INPUT_SIZE);
-  const data = imageData.data;
-  const pixelCount = INPUT_SIZE * INPUT_SIZE;
-
-  // Optimized loop
-  for (let i = 0; i < pixelCount; i++) {
-    const idx = i * 4;
-    tensorBuffer[i] = data[idx] / 255;
-    tensorBuffer[pixelCount + i] = data[idx + 1] / 255;
-    tensorBuffer[2 * pixelCount + i] = data[idx + 2] / 255;
-  }
-
-  return {
-    tensor: new ort.Tensor('float32', tensorBuffer, [1, 3, INPUT_SIZE, INPUT_SIZE]),
-    scale: { scale, offsetX, offsetY, origWidth: srcWidth, origHeight: srcHeight }
-  };
-}
-
-// ==================== INFERENCE ====================
-async function runInference(tensor) {
-  if (!session || !isModelReady) return null;
-  try {
-    const feeds = { [session.inputNames[0]]: tensor };
-    const results = await session.run(feeds);
-    return results[session.outputNames[0]];
-  } catch (error) {
-    console.error('Inference error:', error);
-    return null;
-  }
-}
-
-// ==================== POSTPROCESSING ====================
-function postprocessYOLO(output, scale, imgWidth, imgHeight) {
-  const detections = [];
-  const outputData = output.data;
-  const dims = output.dims;
-
-  if (dims.length !== 3) {
-    console.error('Unexpected output shape:', dims);
-    return detections;
-  }
-
-  const numValues = dims[1];
-  const numPredictions = dims[2];
-  const numClasses = numValues - 4;
-
-  for (let i = 0; i < numPredictions; i++) {
-    const x = outputData[i];
-    const y = outputData[numPredictions + i];
-    const w = outputData[numPredictions * 2 + i];
-    const h = outputData[numPredictions * 3 + i];
-
-    let maxScore = 0;
-    let maxClass = 0;
-
-    for (let c = 0; c < numClasses; c++) {
-      const score = outputData[(4 + c) * numPredictions + i];
-      if (score > maxScore) {
-        maxScore = score;
-        maxClass = c;
-      }
-    }
-
-    if (maxScore < CONFIDENCE_THRESHOLD) continue;
-
-    let x1 = (x - w / 2 - scale.offsetX) / scale.scale;
-    let y1 = (y - h / 2 - scale.offsetY) / scale.scale;
-    let x2 = (x + w / 2 - scale.offsetX) / scale.scale;
-    let y2 = (y + h / 2 - scale.offsetY) / scale.scale;
-
-    x1 = Math.max(0, Math.min(imgWidth, x1));
-    y1 = Math.max(0, Math.min(imgHeight, y1));
-    x2 = Math.max(0, Math.min(imgWidth, x2));
-    y2 = Math.max(0, Math.min(imgHeight, y2));
-
-    if (x2 <= x1 || y2 <= y1) continue;
-
-    detections.push({
-      class: maxClass,
-      label: CLASS_NAMES[maxClass] || 'Class ' + maxClass,
-      confidence: maxScore,
-      bbox: [x1, y1, x2, y2]
-    });
-  }
-
-  return applyNMS(detections, IOU_THRESHOLD);
-}
-
-function applyNMS(detections, iouThreshold) {
-  if (detections.length === 0) return [];
-  detections.sort((a, b) => b.confidence - a.confidence);
-  const keep = [];
-
-  for (const det of detections) {
-    let shouldKeep = true;
-    for (const selected of keep) {
-      if (det.class !== selected.class) continue;
-      const iou = calculateIOU(det.bbox, selected.bbox);
-      if (iou > iouThreshold) {
-        shouldKeep = false;
-        break;
-      }
-    }
-    if (shouldKeep) keep.push(det);
-  }
-  return keep;
-}
-
-function calculateIOU(box1, box2) {
-  const [x1, y1, x2, y2] = box1;
-  const [x3, y3, x4, y4] = box2;
-  const interX1 = Math.max(x1, x3);
-  const interY1 = Math.max(y1, y3);
-  const interX2 = Math.min(x2, x4);
-  const interY2 = Math.min(y2, y4);
-  const interArea = Math.max(0, interX2 - interX1) * Math.max(0, interY2 - interY1);
-  const box1Area = (x2 - x1) * (y2 - y1);
-  const box2Area = (x4 - x3) * (y4 - y3);
-  return interArea / (box1Area + box2Area - interArea);
-}
-
 // ==================== DRAW DETECTIONS ====================
 function drawDetections(canvas, detections, nativeWidth, nativeHeight, displayWidth, displayHeight) {
   const ctx = canvas.getContext('2d');
-
-  // Set canvas to display size (not native size)
   canvas.width = displayWidth;
   canvas.height = displayHeight;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  // Calculate scale factor between native and display
   const scaleX = displayWidth / nativeWidth;
   const scaleY = displayHeight / nativeHeight;
 
   detections.forEach((det, i) => {
-    // Scale coordinates from native to display size
     const x1 = det.bbox[0] * scaleX;
     const y1 = det.bbox[1] * scaleY;
     const x2 = det.bbox[2] * scaleX;
@@ -568,7 +263,6 @@ function drawDetections(canvas, detections, nativeWidth, nativeHeight, displayWi
   });
 }
 
-// ==================== RENDER DETECTIONS ====================
 function renderDetections(detections) {
   if (!detections || detections.length === 0) {
     detectionsPanel.style.display = 'none';
@@ -590,12 +284,23 @@ function renderDetections(detections) {
   detectionsPanel.style.display = 'block';
 }
 
+// ==================== API CALLS ====================
+async function detectImage(imageBase64) {
+  const response = await fetch(API_URL + '/api/detect', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ image_base64: imageBase64 })
+  });
+
+  if (!response.ok) {
+    throw new Error('Detection failed');
+  }
+
+  return response.json();
+}
+
 // ==================== CAMERA ====================
 startCam.onclick = async () => {
-  if (!isModelReady) {
-    setMessage('⏳ Model belum siap.', 'info');
-    return;
-  }
   try {
     webcamStream = await navigator.mediaDevices.getUserMedia({
       video: { width: 640, height: 480 }
@@ -624,7 +329,6 @@ stopCam.onclick = () => {
   if (detectionLoop) cancelAnimationFrame(detectionLoop);
   if (webcamStream) webcamStream.getTracks().forEach(track => track.stop());
   webcamStream = null;
-  isProcessing = false;
   webcamVideo.srcObject = null;
   cameraContainer.style.display = 'none';
   uploadArea.style.display = 'flex';
@@ -635,46 +339,40 @@ stopCam.onclick = () => {
 };
 
 async function detectLoop() {
-  if (!webcamStream || isProcessing) {
-    detectionLoop = requestAnimationFrame(detectLoop);
-    return;
-  }
-
-  isProcessing = true;
+  if (!webcamStream) return;
 
   try {
-    // Create temp canvas for capture
+    // Capture frame
     const tempCanvas = document.createElement('canvas');
     tempCanvas.width = webcamVideo.videoWidth;
     tempCanvas.height = webcamVideo.videoHeight;
-    const ctx = tempCanvas.getContext('2d', { willReadFrequently: true });
+    const ctx = tempCanvas.getContext('2d');
     ctx.drawImage(webcamVideo, 0, 0);
 
-    // Direct canvas preprocessing - no Image conversion needed!
-    const { tensor, scale } = await preprocessImage(tempCanvas);
-    const output = await runInference(tensor);
+    // Convert to base64
+    const imageBase64 = tempCanvas.toDataURL('image/jpeg').split(',')[1];
 
-    if (output) {
-      const detections = postprocessYOLO(output, scale, tempCanvas.width, tempCanvas.height);
-      lastDetectionCount = detections.length;
-      count.textContent = detections.length;
+    // Send to server
+    const result = await detectImage(imageBase64);
 
-      // Get actual displayed dimensions
+    if (result.success) {
+      lastDetections = result.detections;
+      lastDetectionCount = result.count;
+      count.textContent = result.count;
+
       const rect = webcamVideo.getBoundingClientRect();
-      drawDetections(overlayCanvas, detections, tempCanvas.width, tempCanvas.height, rect.width, rect.height);
+      drawDetections(overlayCanvas, result.detections, tempCanvas.width, tempCanvas.height, rect.width, rect.height);
 
-      if (detections.length > 0) {
-        renderDetections(detections);
+      if (result.count > 0) {
+        renderDetections(result.detections);
         saveDbBtn.disabled = false;
-        setMessage('✅ ' + detections.length + ' objek terdeteksi', 'success');
+        setMessage('✅ ' + result.count + ' objek terdeteksi', 'success');
       } else {
         detectionsPanel.style.display = 'none';
       }
     }
   } catch (e) {
     console.error('Detection error:', e);
-  } finally {
-    isProcessing = false;
   }
 
   detectionLoop = requestAnimationFrame(detectLoop);
@@ -700,48 +398,59 @@ uploadArea.ondrop = async (e) => {
 };
 
 async function processFile(file) {
-  if (!isModelReady) {
-    setMessage('⏳ Model belum siap.', 'info');
-    return;
-  }
   if (webcamStream) stopCam.click();
 
   showLoading('🔍 Menganalisis...');
   setMessage('⏳ Menganalisis...', 'info');
 
   try {
-    const img = await loadImage(URL.createObjectURL(file));
+    const reader = new FileReader();
 
-    uploadCanvas.width = img.width;
-    uploadCanvas.height = img.height;
-    uploadCanvas.getContext('2d').drawImage(img, 0, 0);
+    const result = await new Promise((resolve, reject) => {
+      reader.onload = async (e) => {
+        try {
+          const imageBase64 = e.target.result.split(',')[1];
 
-    uploadOverlay.width = img.width;
-    uploadOverlay.height = img.height;
+          // Display image
+          const img = new Image();
+          img.onload = async () => {
+            uploadCanvas.width = img.width;
+            uploadCanvas.height = img.height;
+            uploadCanvas.getContext('2d').drawImage(img, 0, 0);
 
-    uploadContainer.style.display = 'block';
-    uploadArea.style.display = 'none';
+            uploadOverlay.width = img.width;
+            uploadOverlay.height = img.height;
 
-    const { tensor, scale } = await preprocessImage(img);
-    const output = await runInference(tensor);
+            uploadContainer.style.display = 'block';
+            uploadArea.style.display = 'none';
 
-    if (output) {
-      const detections = postprocessYOLO(output, scale, img.width, img.height);
-      lastDetectionCount = detections.length;
-      count.textContent = detections.length;
+            // Detect
+            const detectResult = await detectImage(imageBase64);
+            resolve(detectResult);
+          };
+          img.src = e.target.result;
+        } catch (err) {
+          reject(err);
+        }
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
 
-      // Get actual displayed dimensions
-      const rect = uploadCanvas.getBoundingClientRect();
-      drawDetections(uploadOverlay, detections, img.width, img.height, rect.width, rect.height);
+    lastDetections = result.detections;
+    lastDetectionCount = result.count;
+    count.textContent = result.count;
 
-      if (detections.length > 0) {
-        renderDetections(detections);
-        saveDbBtn.disabled = false;
-        setMessage('✅ Deteksi berhasil! ' + detections.length + ' objek.', 'success');
-      } else {
-        detectionsPanel.style.display = 'none';
-        setMessage('⚠️ Tidak ada objek terdeteksi.', 'warning');
-      }
+    const rect = uploadCanvas.getBoundingClientRect();
+    drawDetections(uploadOverlay, result.detections, uploadCanvas.width, uploadCanvas.height, rect.width, rect.height);
+
+    if (result.count > 0) {
+      renderDetections(result.detections);
+      saveDbBtn.disabled = false;
+      setMessage('✅ Deteksi berhasil! ' + result.count + ' objek.', 'success');
+    } else {
+      detectionsPanel.style.display = 'none';
+      setMessage('⚠️ Tidak ada objek terdeteksi.', 'warning');
     }
   } catch (error) {
     console.error('Process error:', error);
@@ -751,7 +460,7 @@ async function processFile(file) {
   }
 }
 
-// ==================== SAVE TO DATABASE ====================
+// ==================== SAVE TO DB ====================
 saveDbBtn.onclick = async () => {
   if (lastDetectionCount <= 0) {
     setMessage('⚠️ Tidak ada data untuk disimpan.', 'warning');
@@ -793,9 +502,6 @@ saveDbBtn.onclick = async () => {
     saveDbBtn.disabled = lastDetectionCount <= 0;
   }
 };
-
-// ==================== INIT ====================
-loadONNXModel();
 </script>
 </body>
 </html>
