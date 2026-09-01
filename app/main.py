@@ -103,21 +103,10 @@ def decode_image(image_data: bytes) -> Optional[np.ndarray]:
 def detect_upload_fast(frame: np.ndarray) -> tuple[list[dict], str]:
     """
     FAST detection for uploaded images.
-    - Resize to 640px max for speed
+    - No resize (keep original size for accuracy)
     - Skip annotation (return empty string)
-    - Optimized for 2-4 second total time
     """
-    height, width = frame.shape[:2]
-
-    # FAST: resize ke 640px (lebih cepat dari 416 karena kualitas lebih baik)
-    FAST_UPLOAD_SIZE = 640
-    if max(width, height) > FAST_UPLOAD_SIZE:
-        scale = FAST_UPLOAD_SIZE / max(width, height)
-        new_width = int(width * scale)
-        new_height = int(height * scale)
-        frame = cv2.resize(frame, (new_width, new_height))
-
-    # Deteksi dengan YOLO
+    # Deteksi dengan YOLO (tanpa resize)
     model = get_model()
     result = model.predict(frame, conf=CONFIDENCE, iou=IOU, device=DEVICE, verbose=False)[0]
 
