@@ -100,6 +100,59 @@ def decode_image(image_data: bytes) -> Optional[np.ndarray]:
     return frame
 
 
+def detect_upload_fast(frame: np.ndarray) -> tuple[list[dict], str]:
+    """
+    FAST detection for uploaded images.
+    - Resize to 640px max for speed
+    - Skip annotation (return empty string)
+    - Optimized for 2-4 second total time
+    """
+    height, width = frame.shape[:2]
+
+    # FAST: resize ke 640px (lebih cepat dari 416 karena kualitas lebih baik)
+    FAST_UPLOAD_SIZE = 640
+    if max(width, height) > FAST_UPLOAD_SIZE:
+        scale = FAST_UPLOAD_SIZE / max(width, height)
+        new_width = int(width * scale)
+        new_height = int(height * scale)
+        frame = cv2.resize(frame, (new_width, new_height))
+
+    # Deteksi dengan YOLO
+    model = get_model()
+    result = model.predict(frame, conf=CONFIDENCE, iou=IOU, device=DEVICE, verbose=False)[0]
+
+    # Parse hasil deteksi
+    detections = []
+    names = result.names or {}
+    boxes = result.boxes
+
+    if boxes is not None:
+        for box in boxes:
+            coordinates = box.xyxy[0].cpu().numpy().astype(int).tolist()
+            class_id = int(box.cls[0].item())
+            confidence = float(box.conf[0].item())
+            label = str(names.get(class_id, class_id))
+
+            x1, y1, x2, y2 = coordinates
+
+            detections.append({
+                "class_id": class_id,
+                "label": label,
+                "confidence": round(confidence, 3),
+                "bbox": {
+                    "x1": x1,
+                    "y1": y1,
+                    "x2": x2,
+                    "y2": y2,
+                    "width": x2 - x1,
+                    "height": y2 - y1
+                }
+            })
+
+    # Skip annotation untuk speed
+    return detections, ""
+
+
 def detect_fast(frame: np.ndarray) -> list[dict]:
     """
     FAST detection - NO annotation, returns only detections.
@@ -305,13 +358,14 @@ async def detect_upload(file: UploadFile = File(...)):
             detail="Frame tidak dapat dibaca."
         )
 
-    detections, annotated_base64 = detect_in_image(frame)
+    # FAST detection - optimized for upload (2-4 detik)
+    detections, _ = detect_upload_fast(frame)
 
     return DetectionResponse(
         success=True,
         count=len(detections),
         detections=detections,
-        annotated_image=annotated_base64 if annotated_base64 else None
+        annotated_image=None  # Skip annotation for speed
     )
 
 
@@ -343,13 +397,14 @@ async def detect_base64(request: DetectionRequest):
                 detail="Gambar tidak dapat dibaca."
             )
 
-        detections, annotated_base64 = detect_in_image(frame)
+        # FAST detection - optimized for speed
+        detections, _ = detect_upload_fast(frame)
 
         return DetectionResponse(
             success=True,
             count=len(detections),
             detections=detections,
-            annotated_image=annotated_base64 if request.include_annotated else None
+            annotated_image=None
         )
 
     except base64.binascii.Error:

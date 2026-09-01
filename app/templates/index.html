@@ -799,16 +799,18 @@ async function sendImage(imageSource) {
   setMessage('⏳ Menganalisis gambar...', 'info');
 
   try {
+    // Resize to 1280px max, fast JPEG quality
     const sourceWidth = imageSource.videoWidth || imageSource.naturalWidth || imageSource.width || 640;
     const sourceHeight = imageSource.videoHeight || imageSource.naturalHeight || imageSource.height || 480;
-    const scale = Math.min(1, 1280 / sourceWidth);
+    const scale = Math.min(1, 1280 / Math.max(sourceWidth, sourceHeight));
     const canvas = document.createElement('canvas');
     canvas.width = Math.round(sourceWidth * scale);
     canvas.height = Math.round(sourceHeight * scale);
     const ctx = canvas.getContext('2d');
     ctx.drawImage(imageSource, 0, 0, canvas.width, canvas.height);
 
-    const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.85));
+    // Lower quality for faster upload (50%)
+    const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.5));
     if (!blob) throw new Error('Gambar tidak dapat diproses oleh browser.');
     const formData = new FormData();
     formData.append('file', blob, 'image.jpg');
