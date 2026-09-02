@@ -45,6 +45,8 @@ load_dotenv()
 
 ROOT = Path(__file__).resolve().parent.parent
 TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
+STATIC_DIR = Path(__file__).resolve().parent / "static"
+CAPTURES_DIR = STATIC_DIR / "captures"
 MODEL_PATH = Path(os.getenv("MODEL_PATH", "models/best.pt"))
 if not MODEL_PATH.is_absolute():
     MODEL_PATH = ROOT / MODEL_PATH
@@ -53,6 +55,9 @@ IOU = float(os.getenv("IOU", "0.45"))
 DEVICE = os.getenv("DEVICE", "cpu")
 MAX_FRAME_WIDTH = int(os.getenv("MAX_FRAME_WIDTH", "416"))  # YOLO optimal = FAST!
 WEBSOCKET_INTERVAL = float(os.getenv("WEBSOCKET_INTERVAL", "0.15"))  # 150ms!
+
+# Create captures directory if not exists
+CAPTURES_DIR.mkdir(parents=True, exist_ok=True)
 
 # Database Configuration
 DB_HOST = os.getenv("DB_HOST", "localhost")
@@ -74,6 +79,9 @@ app.add_middleware(
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
+
+# Serve captured images as static files
+app.mount("/captures", StaticFiles(directory=str(CAPTURES_DIR)), name="captures")
 
 _model = None
 _model_lock = Lock()
@@ -98,6 +106,24 @@ def decode_image(image_data: bytes) -> Optional[np.ndarray]:
     """Decode image dari bytes ke numpy array"""
     frame = cv2.imdecode(np.frombuffer(image_data, dtype=np.uint8), cv2.IMREAD_COLOR)
     return frame
+
+
+def save_capture(image_data: bytes, detections: list) -> str:
+    """
+    Simpan capture gambar ke folder captures.
+    Returns: filename yang disimpan
+    """
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    count_suffix = f"_count{len(detections)}" if detections else "_nocount"
+    filename = f"capture_{timestamp}{count_suffix}.jpg"
+    filepath = CAPTURES_DIR / filename
+
+    # Decode and save image
+    frame = decode_image(image_data)
+    if frame is not None:
+        cv2.imwrite(str(filepath), frame)
+        return filename
+    return ""
 
 
 def detect_upload_fast(frame: np.ndarray) -> tuple[list[dict], str]:
@@ -263,6 +289,7 @@ class DetectionResponse(BaseModel):
     count: int
     detections: list[dict]
     annotated_image: Optional[str] = None  # Base64
+    saved_file: Optional[str] = None  # Filename yang disimpan
 
 
 class HealthResponse(BaseModel):
@@ -350,11 +377,15 @@ async def detect_upload(file: UploadFile = File(...)):
     # FAST detection - optimized for upload (2-4 detik)
     detections, _ = detect_upload_fast(frame)
 
+    # Simpan capture ke folder
+    saved_filename = save_capture(raw, detections)
+
     return DetectionResponse(
         success=True,
         count=len(detections),
         detections=detections,
-        annotated_image=None  # Skip annotation for speed
+        annotated_image=None,  # Skip annotation for speed
+        saved_file=saved_filename if saved_filename else None
     )
 
 

@@ -69,3 +69,6 @@ logs/
 *.tmp
 *.temp
 temp/
+
+# Captured images (auto-generated, too large)
+app/static/captures/
