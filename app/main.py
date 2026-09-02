@@ -129,10 +129,20 @@ def save_capture(image_data: bytes, detections: list) -> str:
 def detect_upload_fast(frame: np.ndarray) -> tuple[list[dict], str]:
     """
     FAST detection for uploaded images.
-    - No resize (keep original size for accuracy)
+    - Resize to 1280px max (matching frontend max size)
     - Skip annotation (return empty string)
     """
-    # Deteksi dengan YOLO (tanpa resize)
+    height, width = frame.shape[:2]
+
+    # Resize ke 1280px max (optimal for YOLO, same as frontend)
+    MAX_UPLOAD_SIZE = 1280
+    if max(width, height) > MAX_UPLOAD_SIZE:
+        scale = MAX_UPLOAD_SIZE / max(width, height)
+        new_width = int(width * scale)
+        new_height = int(height * scale)
+        frame = cv2.resize(frame, (new_width, new_height))
+
+    # Deteksi dengan YOLO
     model = get_model()
     result = model.predict(frame, conf=CONFIDENCE, iou=IOU, device=DEVICE, verbose=False)[0]
 

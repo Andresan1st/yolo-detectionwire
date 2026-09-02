@@ -835,10 +835,7 @@ async function sendImage(imageSource) {
         // Draw image
         ctx.drawImage(img, 0, 0);
 
-        // Draw bounding boxes
-        const scaleX = img.width / (data.detections[0]?.bbox?.width || img.width);
-        const scaleY = img.height / (data.detections[0]?.bbox?.height || img.height);
-
+        // Draw bounding boxes (coordinates already in native resolution)
         data.detections.forEach((d) => {
           const x1 = d.bbox.x1;
           const y1 = d.bbox.y1;
