@@ -384,17 +384,17 @@ async def detect_upload(file: UploadFile = File(...)):
             detail="Frame tidak dapat dibaca."
         )
 
-    # FAST detection - optimized for upload (2-4 detik)
-    detections, _ = detect_upload_fast(frame)
-
     # Simpan capture ke folder
-    saved_filename = save_capture(raw, detections)
+    saved_filename = save_capture(raw, [])
+
+    # Detection dengan annotate (asli, sebelum perubahan)
+    detections, annotated_base64 = detect_in_image(frame)
 
     return DetectionResponse(
         success=True,
         count=len(detections),
         detections=detections,
-        annotated_image=None,  # Skip annotation for speed
+        annotated_image=annotated_base64 if annotated_base64 else None,
         saved_file=saved_filename if saved_filename else None
     )
 
