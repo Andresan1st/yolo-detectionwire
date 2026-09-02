@@ -416,15 +416,15 @@
           </div>
         </div>
         <div class="upload-area" id="uploadArea">
-          <div class="upload-icon">📁</div>
-          <p>Drag & drop gambar di sini</p>
+          <div class="upload-icon">📷</div>
+          <p>Klik "Ambil Foto" atau drag gambar ke sini</p>
         </div>
         <img id="uploadPreview" alt="Preview" style="display:none; width:100%; height:100%; object-fit:contain;">
-        <input type="file" id="fileInput" accept="image/*">
+        <input type="file" id="fileInput" accept="image/*" capture="environment">
       </div>
       <div class="card-footer">
         <div class="btn-group" style="flex-wrap: wrap; gap: 8px;">
-          <button class="secondary" id="uploadBtn">📁 Pilih File</button>
+          <button class="secondary" id="uploadBtn">📷 Ambil Foto</button>
           <button class="secondary" id="stopCam" disabled>⏹ Berhenti</button>
           <button class="primary" id="startCam">🎥 Aktifkan Kamera</button>
           <button class="secondary" id="saveDbBtn" disabled style="background: var(--accent); color: #fff;">💾 Simpan ke DB</button>
