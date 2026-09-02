@@ -818,10 +818,54 @@ async function sendImage(imageSource) {
 
     if (!response.ok) throw new Error(data.detail || 'Deteksi gagal');
 
-    if (data.annotated_image && uploadPreview) {
-      uploadPreview.src = `data:image/jpeg;base64,${data.annotated_image}`;
-      uploadPreview.style.display = 'block';
-      if (placeholderResult) placeholderResult.style.display = 'none';
+    // Show uploaded image with bounding boxes
+    if (data.saved_file || data.annotated_image) {
+      const imgUrl = data.saved_file
+        ? `${API_URL}/captures/${data.saved_file}`
+        : `data:image/jpeg;base64,${data.annotated_image}`;
+
+      // Create canvas to draw image with bounding boxes
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+
+        // Draw image
+        ctx.drawImage(img, 0, 0);
+
+        // Draw bounding boxes
+        const scaleX = img.width / (data.detections[0]?.bbox?.width || img.width);
+        const scaleY = img.height / (data.detections[0]?.bbox?.height || img.height);
+
+        data.detections.forEach((d) => {
+          const x1 = d.bbox.x1;
+          const y1 = d.bbox.y1;
+          const w = d.bbox.x2 - d.bbox.x1;
+          const h = d.bbox.y2 - d.bbox.y1;
+
+          // Draw box
+          ctx.strokeStyle = '#28dc78';
+          ctx.lineWidth = 3;
+          ctx.strokeRect(x1, y1, w, h);
+
+          // Draw label
+          const label = `${d.label} ${Math.round(d.confidence * 100)}%`;
+          ctx.font = 'bold 16px Arial';
+          ctx.fillStyle = '#28dc78';
+          const textWidth = ctx.measureText(label).width;
+          ctx.fillRect(x1, Math.max(0, y1 - 24), textWidth + 10, 22);
+          ctx.fillStyle = '#000000';
+          ctx.fillText(label, x1 + 5, Math.max(16, y1 - 8));
+        });
+
+        // Show preview with boxes
+        uploadPreview.src = canvas.toDataURL('image/jpeg', 0.9);
+        uploadPreview.style.display = 'block';
+        if (placeholderResult) placeholderResult.style.display = 'none';
+      };
+      img.src = imgUrl;
     } else {
       if (uploadPreview) {
         uploadPreview.removeAttribute('src');
