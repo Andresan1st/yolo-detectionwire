@@ -29,7 +29,9 @@ def parse_args():
     parser.add_argument("--batch", type=int, default=8)
     parser.add_argument("--device", default="0", help="0 = GPU pertama, cpu = tanpa GPU")
     parser.add_argument("--workers", type=int, default=2)
-    parser.add_argument("--patience", type=int, default=30, help="Berhenti jika tidak membaik selama N epoch")
+    parser.add_argument("--patience", type=int, default=50, help="Berhenti jika tidak membaik selama N epoch")
+    parser.add_argument("--lr0", type=float, default=0.001,
+                        help="Learning rate awal; kecil supaya bobot model lama tidak rusak")
     parser.add_argument("--name", default="finetune", help="Nama folder di runs/detect/")
     return parser.parse_args()
 
@@ -78,6 +80,12 @@ def main():
         device=args.device,
         workers=args.workers,
         patience=args.patience,
+        # Fine-tune: LR kecil & tetap (default Ultralytics terlalu besar untuk
+        # model yang sudah konvergen, membuatnya "lupa" lalu tidak pulih).
+        optimizer="SGD",
+        lr0=args.lr0,
+        lrf=0.1,
+        warmup_epochs=1,
         name=args.name,
         exist_ok=False,  # run baru otomatis jadi finetune2, finetune3, ...
     )
