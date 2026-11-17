@@ -23,7 +23,8 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Fine-tune YOLO dari models/best.pt")
     parser.add_argument("--model", default="models/best.pt", help="Model awal (hasil training sebelumnya)")
     parser.add_argument("--data", default="data/data.yaml", help="Konfigurasi dataset")
-    parser.add_argument("--imgsz", type=int, default=640, help="Samakan dengan training sebelumnya")
+    parser.add_argument("--imgsz", type=int, default=None,
+                        help="Default: ikut imgsz training model lama (fallback 640)")
     parser.add_argument("--epochs", type=int, default=100)
     parser.add_argument("--batch", type=int, default=8)
     parser.add_argument("--device", default="0", help="0 = GPU pertama, cpu = tanpa GPU")
@@ -57,6 +58,11 @@ def main():
         raise SystemExit(f"Model awal tidak ditemukan: {model_path}")
 
     check_dataset(ROOT / "data" / "dataset")
+
+    if args.imgsz is None:
+        ckpt = YOLO(str(model_path)).ckpt or {}
+        args.imgsz = int((ckpt.get("train_args") or {}).get("imgsz") or 640)
+        print(f"imgsz     : {args.imgsz} (diambil dari training model lama)")
 
     print("\n=== Skor model LAMA ===")
     old_metrics = YOLO(str(model_path)).val(
